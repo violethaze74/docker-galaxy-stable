@@ -1,4 +1,4 @@
-FROM alpine:3.11
+FROM alpine:3.13
 
 RUN apk add --no-cache bash python3 \
     && pip3 install j2cli[yaml] jinja2-ansible-filters

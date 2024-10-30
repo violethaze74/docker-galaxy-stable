@@ -9,13 +9,10 @@ SLURM_CONFIG_TEMPLATE = '''
 # Put this file on all nodes of your cluster.
 # See the slurm.conf man page for more information.
 #
-ControlMachine=$control_machine
-#ControlAddr=
-#BackupController=
-#BackupAddr=
+SlurmctldHost=$control_machine
+#SlurmctldAddr=
 #
 AuthType=auth/munge
-CacheGroups=0
 #CheckpointType=checkpoint/none
 CryptoType=crypto/munge
 MpiDefault=none
@@ -54,14 +51,12 @@ SlurmdTimeout=300
 #UnkillableStepTimeout=60
 #VSizeFactor=0
 Waittime=0
-FastSchedule=1
 SchedulerType=sched/backfill
-SchedulerPort=7321
 SelectType=select/cons_res
 SelectTypeParameters=CR_Core_Memory
 AccountingStorageType=accounting_storage/none
 #AccountingStorageUser=
-AccountingStoreJobComment=YES
+AccountingStoreFlags=job_comment
 ClusterName=$cluster_name
 #DebugFlags=
 #JobCompHost=
@@ -102,7 +97,7 @@ def main():
         "memory": environ.get("SLURM_MEMORY", int(mem / (1024 * 1024)))
     }
     config_contents = Template(SLURM_CONFIG_TEMPLATE).substitute(template_params)
-    open("/etc/slurm-llnl/slurm.conf", "w").write(config_contents)
+    open("/etc/slurm/slurm.conf", "w").write(config_contents)
 
 if __name__ == "__main__":
     main()

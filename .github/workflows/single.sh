@@ -19,6 +19,7 @@ docker info
 
 # start building this repo
 git submodule update --init --recursive
+git submodule update --remote --rebase
 sudo chown 1450 /tmp && sudo chmod a=rwx /tmp
 
 ## define a container size check function, first parameter is the container name, second the max allowed size in MB
@@ -50,8 +51,8 @@ docker run -d -p 8080:80 -p 8021:21 -p 8022:22 \
     --privileged=true \
     -v "$(pwd)/local_folder:/export/" \
     -e GALAXY_CONFIG_ALLOW_USER_DATASET_PURGE=True \
-    -e GALAXY_CONFIG_ALLOW_LIBRARY_PATH_PASTE=True \
-    -e GALAXY_CONFIG_ENABLE_USER_DELETION=True \
+    -e GALAXY_CONFIG_ALLOW_PATH_PASTE=True \
+    -e GALAXY_CONFIG_ALLOW_USER_DELETION=True \
     -e GALAXY_CONFIG_ENABLE_BETA_WORKFLOW_MODULES=True \
     -v /tmp/:/tmp/ \
     quay.io/bgruening/galaxy
@@ -82,7 +83,7 @@ cd "${WORKING_DIR}/test/slurm/" && bash test.sh && cd "$WORKING_DIR"
 # - cd $WORKING_DIR/test/gridengine/ && bash test.sh && cd $WORKING_DIR
 
 echo 'Waiting for Galaxy to come up.'
-galaxy-wait -g $BIOBLEND_GALAXY_URL --timeout 300
+galaxy-wait -g $BIOBLEND_GALAXY_URL --timeout 600
 
 curl -v --fail $BIOBLEND_GALAXY_URL/api/version
 
@@ -124,7 +125,7 @@ cd "$WORKING_DIR/test/bioblend/" && . ./test.sh && cd "$WORKING_DIR/"
 #  then
 #    # Test without install-repository wrapper
 #      sleep 10
-#      docker_exec_run bash -c 'cd $GALAXY_ROOT && python ./scripts/api/install_tool_shed_repositories.py --api admin -l http://localhost:80 --url https://toolshed.g2.bx.psu.edu -o devteam --name cut_columns --panel-section-name BEDTools'
+#      docker_exec_run bash -c 'cd $GALAXY_ROOT_DIR && python ./scripts/api/install_tool_shed_repositories.py --api admin -l http://localhost:80 --url https://toolshed.g2.bx.psu.edu -o devteam --name cut_columns --panel-section-name BEDTools'
 #  fi
 
 

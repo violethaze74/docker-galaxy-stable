@@ -35,7 +35,7 @@ else
         ./run.sh -d $install_log --pidfile galaxy_install.pid --http-timeout 3000"
 
     galaxy_install_pid=`cat galaxy_install.pid`
-    galaxy-wait -g http://localhost:$PORT -v --timeout 120
+    galaxy-wait -g http://localhost:$PORT -v --timeout 600
 fi
 
 # Create the admin user if not already done
@@ -44,7 +44,7 @@ fi
 if [[ ! -z $GALAXY_DEFAULT_ADMIN_USER ]]
     then
         (
-        cd $GALAXY_ROOT
+        cd $GALAXY_ROOT_DIR
         . $GALAXY_VIRTUAL_ENV/bin/activate
         echo "Creating admin user $GALAXY_DEFAULT_ADMIN_USER with key $GALAXY_DEFAULT_ADMIN_KEY and password $GALAXY_DEFAULT_ADMIN_PASSWORD if not existing"
         python /usr/local/bin/create_galaxy_user.py --user "$GALAXY_DEFAULT_ADMIN_EMAIL" --password "$GALAXY_DEFAULT_ADMIN_PASSWORD" \

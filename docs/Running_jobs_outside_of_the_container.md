@@ -120,7 +120,7 @@ cp job_conf.xml /data/galaxy/galaxy-central/config
 ```
 We restart galaxy inside the container
 ```sh
-docker exec galaxy-slurm-test supervisorctl restart galaxy:
+docker exec galaxy-slurm-test galaxyctl restart
 ```
 
 We should now be able to submit galaxy jobs through the slurm container.
@@ -152,5 +152,5 @@ Now quit the slurm container, edit the job_conf.xml and set
 ```
 and finally restart galaxy:
 ```
-docker exec galaxy-slurm-test supervisorctl restart galaxy:
+docker exec galaxy-slurm-test galaxyctl restart
 ```

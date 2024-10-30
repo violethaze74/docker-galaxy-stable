@@ -3,7 +3,7 @@
   remote_user: root
   vars:
     postgresql_backup_local_dir: /export/postgresql_backup/
-    postgresql_version: 11
+    postgresql_version: 15
     postgresql_flavor: pgdg
     postgresql_conf:
       listen_addresses: "'*'"

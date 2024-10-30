@@ -1,18 +1,17 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     slurmd slurmctld \
-    python-psutil supervisor virtualenv samtools apt-transport-https software-properties-common curl sudo gpg-agent && \
+    python3-psutil supervisor virtualenv samtools apt-transport-https software-properties-common curl sudo gpg-agent && \
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - && \
     add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" && \
     apt update && \
     apt install -y docker-ce && \
     apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && rm -rf ~/.cache/ && \
     adduser galaxy &&\
-    /usr/sbin/create-munge-key &&\
-    touch /var/log/slurm-llnl/slurmctld.log /var/log/slurm-llnl/slurmd.log &&\
+    touch /var/log/slurm/slurmctld.log /var/log/slurm/slurmd.log &&\
     mkdir /tmp/slurm
 
 ADD configure_slurm.py /usr/local/bin/configure_slurm.py

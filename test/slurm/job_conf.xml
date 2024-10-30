@@ -26,6 +26,9 @@
                $galaxy_root:ro,$tool_directory:ro,$working_directory:rw,$default_file_path:rw
           -->
           <param id="docker_volumes" from_environ="GALAXY_DOCKER_VOLUMES">$defaults</param>
+          <param id="docker_net" from_environ="GALAXY_DOCKER_NET">bridge</param>
+          <param id="docker_auto_rm" from_environ="GALAXY_DOCKER_AUTO_RM">True</param>
+          <param id="docker_set_user" from_environ="GALAXY_DOCKER_SET_USER"></param>
         </destination>
         <destination id="local" runner="local"/>
     </destinations>

@@ -17,8 +17,8 @@ fi
 if [ ! -f "$SLURM_CONF_PATH" ]
   then
     python /usr/local/bin/configure_slurm.py
-    cp /etc/slurm-llnl/slurm.conf "$SLURM_CONF_PATH"
-    rm /etc/slurm-llnl/slurm.conf
+    cp /etc/slurm/slurm.conf "$SLURM_CONF_PATH"
+    rm /etc/slurm/slurm.conf
 fi
 if [ ! -f "$GALAXY_DIR"/.venv ]
   then
@@ -31,5 +31,5 @@ if [ ! -f "$GALAXY_DIR"/.venv ]
 fi
 chown $SLURM_USER_NAME /tmp/slurm
 ln -s "$GALAXY_DIR" "$SYMLINK_TARGET"
-ln -s "$SLURM_CONF_PATH" /etc/slurm-llnl/slurm.conf
+ln -s "$SLURM_CONF_PATH" /etc/slurm/slurm.conf
 exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf

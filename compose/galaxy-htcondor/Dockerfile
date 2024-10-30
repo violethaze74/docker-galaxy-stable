@@ -2,22 +2,22 @@ ARG DOCKER_REGISTRY=quay.io
 ARG DOCKER_REGISTRY_USERNAME=bgruening
 ARG IMAGE_TAG=latest
 
-FROM buildpack-deps:20.04 as galaxy_dependencies
+FROM buildpack-deps:22.04 as galaxy_dependencies
 
-ARG GALAXY_RELEASE=release_20.09
+ARG GALAXY_RELEASE=release_24.1
 ARG GALAXY_REPO=https://github.com/galaxyproject/galaxy
 
-ENV GALAXY_ROOT=/galaxy
-ENV GALAXY_LIBRARY=$GALAXY_ROOT/lib
+ENV GALAXY_ROOT_DIR=/galaxy
+ENV GALAXY_LIBRARY=$GALAXY_ROOT_DIR/lib
 
 # Download Galaxy source, but only keep necessary dependencies
-RUN mkdir "${GALAXY_ROOT}" \
-    && curl -L -s $GALAXY_REPO/archive/$GALAXY_RELEASE.tar.gz | tar xzf - --strip-components=1 -C $GALAXY_ROOT \
-    && cd $GALAXY_ROOT \
+RUN mkdir "${GALAXY_ROOT_DIR}" \
+    && curl -L -s $GALAXY_REPO/archive/$GALAXY_RELEASE.tar.gz | tar xzf - --strip-components=1 -C $GALAXY_ROOT_DIR \
+    && cd $GALAXY_ROOT_DIR \
     && ls . | grep -v "lib" | xargs rm -rf \
-    && cd $GALAXY_ROOT/lib \
+    && cd $GALAXY_ROOT_DIR/lib \
     && ls . | grep -v "galaxy\|galaxy_ext" | xargs rm -rf \
-    && cd $GALAXY_ROOT/lib/galaxy \
+    && cd $GALAXY_ROOT_DIR/lib/galaxy \
     && ls . | grep -v "__init__.py\|datatypes\|exceptions\|files\|metadata\|model\|util\|security" | xargs rm -rf
 
 
@@ -30,7 +30,7 @@ ENV GALAXY_USER=galaxy \
     GALAXY_UID=1450 \
     GALAXY_GID=1450 \
     GALAXY_HOME=/home/galaxy \
-    GALAXY_ROOT=/galaxy
+    GALAXY_ROOT_DIR=/galaxy
 
 RUN groupadd -r $GALAXY_USER -g $GALAXY_GID \
     && useradd -u $GALAXY_UID -r -g $GALAXY_USER -d $GALAXY_HOME -c "Galaxy user" --shell /bin/bash $GALAXY_USER \
@@ -49,9 +49,11 @@ ENV CONDOR_CPUS=1 \
 RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/02apt-speedup \
     && echo 'Acquire::http::Timeout "20";' > /etc/apt/apt.conf.d/98AcquireTimeout \
     && echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/99AcquireRetries \
-    && apt-get update -qq && apt-get install -y --no-install-recommends locales \
+    && apt-get update -qq && apt-get install -y --no-install-recommends locales gnupg2 curl \
     && locale-gen en_US.UTF-8 && dpkg-reconfigure locales \
-    && apt-get install -y --no-install-recommends \
+    && curl -fsSL https://research.cs.wisc.edu/htcondor/repo/keys/HTCondor-current-Key | apt-key add - \
+    && echo "deb https://research.cs.wisc.edu/htcondor/repo/ubuntu/current jammy main" >> /etc/apt/sources.list \
+    && apt-get update -qq && apt-get install -y --no-install-recommends \
         supervisor \
         htcondor \
         wget \
@@ -62,11 +64,11 @@ RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/02apt-speedup \
 ADD supervisord.conf /etc/supervisord.conf
 
 # Copy Galaxy dependencies
-COPY --chown=$GALAXY_USER:$GALAXY_USER --from=galaxy_dependencies $GALAXY_ROOT $GALAXY_ROOT
+COPY --chown=$GALAXY_USER:$GALAXY_USER --from=galaxy_dependencies $GALAXY_ROOT_DIR $GALAXY_ROOT_DIR
 
 COPY start.sh /usr/bin/start.sh
 RUN apt update && apt install python3 -y
 
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 9 
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 10 
 
 ENTRYPOINT /usr/bin/start.sh

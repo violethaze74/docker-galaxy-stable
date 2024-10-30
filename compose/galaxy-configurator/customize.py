@@ -25,7 +25,7 @@ def alter_context(context):
 
     translations = {
       "GALAXY_CONFIG_":         "galaxy",
-      "GALAXY_UWSGI_CONFIG_":   "galaxy_uwsgi",
+      "GRAVITY_CONFIG_":        "gravity",
       "GALAXY_JOB_METRICS_":    "galaxy_job_metrics",
       "NGINX_CONFIG_":          "nginx",
       "SLURM_CONFIG_":          "slurm",

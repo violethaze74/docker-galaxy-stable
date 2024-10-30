@@ -1,6 +1,5 @@
 # Extend Galaxy to run jobs using HTCondor.
 # Example: `docker-compose -f docker-compose.yml -f docker-compose.htcondor.yml up`
-version: "3.7"
 services:
   galaxy-configurator:
     environment:
@@ -14,6 +13,7 @@ services:
     hostname: htcondor-master
     environment:
       - HTCONDOR_TYPE=master
+      - HTCONDOR_POOL_PASSWORD=123456789changeme
     volumes:
       - ${EXPORT_DIR:-./export}/htcondor:/config
     networks:
@@ -25,6 +25,7 @@ services:
     environment:
       - HTCONDOR_TYPE=executor
       - CONDOR_HOST=htcondor-master
+      - HTCONDOR_POOL_PASSWORD=123456789changeme
     volumes:
       - ${EXPORT_DIR:-./export}/htcondor:/config
       - ${EXPORT_DIR:-./export}/galaxy/database:/galaxy/database

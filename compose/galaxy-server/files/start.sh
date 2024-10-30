@@ -25,8 +25,8 @@ cp -rf $tools_dir/* $exp_dir
 
 echo "Initialization: Check if files already exist, export otherwise."
 
-# Create initial $GALAXY_ROOT in $EXPORT_DIR if not already existent
-mkdir -p "$EXPORT_DIR/$GALAXY_ROOT"
+# Create initial $GALAXY_ROOT_DIR in $EXPORT_DIR if not already existent
+mkdir -p "$EXPORT_DIR/$GALAXY_ROOT_DIR"
 
 declare -A exports=( ["$GALAXY_STATIC_DIR"]="$EXPORT_DIR/$GALAXY_STATIC_DIR" \
                      ["$GALAXY_CONFIG_TOOL_PATH"]="$EXPORT_DIR/$GALAXY_CONFIG_TOOL_PATH" \
@@ -109,8 +109,9 @@ if [ -f "/htcondor_config/galaxy.conf" ]; then
   echo "HTCondor config file found"
 
   cp -f "/htcondor_config/galaxy.conf" /etc/condor/condor_config.local
+  condor_store_cred -p "$HTCONDOR_POOL_PASSWORD" -f /var/lib/condor/pool_password
   echo "Starting HTCondor.."
-  service condor start
+  /usr/sbin/condor_master -b
 fi
 
 if [ -f /etc/munge/munge.key ]; then
@@ -129,5 +130,5 @@ fi
 chown -RL "$GALAXY_USER:$GALAXY_GROUP" "$GALAXY_CONFIG_DIR"
 
 echo "Starting Galaxy now.."
-cd "$GALAXY_ROOT" || { echo "Error: Could not change to $GALAXY_ROOT"; exit 1; }
-"$GALAXY_VIRTUAL_ENV/bin/uwsgi" --yaml "$GALAXY_CONFIG_DIR/galaxy.yml" --uid "$GALAXY_UID" --gid "$GALAXY_GID"
+cd "$GALAXY_ROOT_DIR" || { echo "Error: Could not change to $GALAXY_ROOT_DIR"; exit 1; }
+sudo -E -u $GALAXY_USER "$GALAXY_VIRTUAL_ENV/bin/galaxy" --config-file "$GALAXY_CONFIG_FILE"

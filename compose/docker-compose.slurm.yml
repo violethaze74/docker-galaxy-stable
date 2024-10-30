@@ -1,6 +1,5 @@
 # Extend Galaxy to run jobs using Slurm.
 # Example: `docker-compose -f docker-compose.yml -f docker-compose.slurm.yml up`
-version: "3.7"
 services:
   galaxy-configurator:
     environment:
@@ -9,18 +8,18 @@ services:
       - SLURM_NODE_COUNT=${SLURM_NODE_COUNT:-1}
       - SLURM_NODE_HOSTNAME=compose_slurm_node
     volumes:
-      - ${EXPORT_DIR:-./export}/slurm_config:/etc/slurm-llnl
+      - ${EXPORT_DIR:-./export}/slurm_config:/etc/slurm
   galaxy-server:
     volumes:
       - ${EXPORT_DIR:-./export}/munge:/etc/munge
-      - ${EXPORT_DIR:-./export}/slurm_config:/etc/slurm-llnl
+      - ${EXPORT_DIR:-./export}/slurm_config:/etc/slurm
   slurmctld:
     image: ${DOCKER_REGISTRY:-quay.io}/${DOCKER_REGISTRY_USERNAME:-bgruening}/galaxy-slurm:${IMAGE_TAG:-latest}
     build: galaxy-slurm
     command: ["slurmctld"]
     hostname: slurmctld
     volumes:
-      - ${EXPORT_DIR:-./export}/slurm_config:/etc/slurm-llnl
+      - ${EXPORT_DIR:-./export}/slurm_config:/etc/slurm
       - ${EXPORT_DIR:-./export}/munge:/etc/munge
     networks:
       - galaxy
@@ -28,7 +27,7 @@ services:
     image: ${DOCKER_REGISTRY:-quay.io}/${DOCKER_REGISTRY_USERNAME:-bgruening}/galaxy-slurm-node-discovery:${IMAGE_TAG:-latest}
     build: galaxy-slurm-node-discovery
     volumes:
-      - ${EXPORT_DIR:-./export}/slurm_config:/etc/slurm-llnl
+      - ${EXPORT_DIR:-./export}/slurm_config:/etc/slurm
       - /var/run/docker.sock:/var/run/docker.sock
   slurm_node:
     image: ${DOCKER_REGISTRY:-quay.io}/${DOCKER_REGISTRY_USERNAME:-bgruening}/galaxy-slurm:${IMAGE_TAG:-latest}
@@ -44,7 +43,7 @@ services:
       - ${EXPORT_DIR:-./export}/galaxy/tool-data:/galaxy/tool-data
       - ${EXPORT_DIR:-./export}/galaxy/.venv:/galaxy/.venv
       - ${EXPORT_DIR:-./export}/tool_deps:/tool_deps
-      - ${EXPORT_DIR:-./export}/slurm_config:/etc/slurm-llnl
+      - ${EXPORT_DIR:-./export}/slurm_config:/etc/slurm
       - ${EXPORT_DIR:-./export}/munge:/etc/munge
       - /var/run/docker.sock:/var/run/docker.sock
     networks:

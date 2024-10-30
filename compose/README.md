@@ -1,7 +1,7 @@
 # Galaxy Docker Compose
 This setup is built on the idea to use a basic docker-compose file and extend it
 for additional use cases. Therefore the `docker-compose.yml` is the base of the
-whole setup. By concatinating additional files, you can extend it to use, for
+whole setup. By concatenating additional files, you can extend it to use, for
 example, HTCondor (see [Usage](#usage)).
 
 All working data (database, virtual environment, etc.) is exported in the
@@ -107,7 +107,7 @@ template folder (remember to add the `.j2` extension!) and mention it in the
 
 While Kind is starting up the cluster, it blocks Galaxy from starting itself.
 This is needed as Galaxy will parse the KUBECONFIG (that is created after k8s has started)
-only once on startup. So don't be surprised if Galaxy is quite for some time :)
+only once on startup. So don't be surprised if Galaxy is quiet for some time :)
 
 Note that the cluster is being rebuilt on every start (to be more precise,
 a `kind delete cluster` is called on shut down), so manual changes will
@@ -151,9 +151,9 @@ All options are discussed under [configuration reference](#configuration-referen
 
 ### Use specific Galaxy version or Docker images
 The `IMAGE_TAG` environment variable allows to use specific versions of the
-setup. Say, you want to stay with Galaxy v20.09 for now:
+setup. Say, you want to stay with Galaxy v24.1 for now:
 
-> export IMAGE_TAG=20.09
+> export IMAGE_TAG=24.1
 > docker-compose up
 
 Without setting this variable, you will always get updated to the newest
@@ -205,13 +205,13 @@ base-images are tagged differently or are stored in a different repository.
 
 ### Extend the Galaxy-Configurator
 It is possible to extend the usage of the configurator, both in extending the
-Jinj2 templates, but also in adding additional files.
+Jinja2 templates, but also in adding additional files.
 
 All environment variables of the `galaxy-configurator` are accessible
 within the templates. Additionally,
 the configurator parses specific `*_CONFIG_*`
 variables and makes them accessible as a dict (for example `galaxy` or
-`galaxy_uwsgi`). It may be helpful to understand the current use cases
+`gravity`). It may be helpful to understand the current use cases
 within the templates and how the `customize.py` file (actually just an
 extension of the [J2cli](https://github.com/kolypto/j2cli) parses env
 variables.
@@ -238,7 +238,7 @@ overwrites a single
 environment variable and sets a new one. The neat thing of this
 approach is that if you don't need
 to run HTCondor, the base setup will work just fine without
-much additional balast. However, adding HTCondor isn't a hassle
+much additional ballast. However, adding HTCondor isn't a hassle
 either.
 
 **Singularity**
@@ -249,7 +249,7 @@ can avoid that. In normal cases, Galaxy should run jobs in the
 shell directly, changing that to Singularity requires some
 different settings. The file is a good example in how you can
 quickly overwrite settings and be able to reuse it for different
-occasions (remember that by concatinating this file behind
+occasions (remember that by concatenating this file behind
 HTCondor, Slurm, or Pulsar enables Singularity the same way). Another
 example would be to create a custom `docker-compose.debug.yml` file
 that could be used to enable some debug flags or
@@ -289,7 +289,7 @@ Have a look inside the `tests` folder. There you find the containers that run
 the tests and their docker-compose files. The containers are essentially just
 a wrapper around the test tools to simplify using them. Running a tests
 is the same as extending
-any other part of the setup: Just concatinate the test file at the end.
+any other part of the setup: Just concatenate the test file at the end.
 To run, for example, some Planemo Worklow tests against a Galaxy installation that
 is connected to a HTCondor cluster using Singularity, just enter:
 `docker-compose -f docker-compose.yml -f docker-compose.htcondor.yml
@@ -300,7 +300,7 @@ This returns the exit code of the test container (should be 0 if successful),
 which you could use for further automation.
 
 The tests are run using GitHub Actions on every commit. So feel free to inspect
-the `.github/workflows/compose-v2.yml` file for more test cases and get inspired
+the `.github/workflows/compose.yml` file for more test cases and get inspired
 by them :)
 
 ### Planemo workflow tests
@@ -313,7 +313,7 @@ by setting the `WORKFLOWS` env variable to a comma separated list of paths to so
 
 ### Selenium tests
 The Selenium tests simulate a real user that is accessing Galaxy through the
-browser to performe some actions. For that it uses a headless Chrome to runs the
+browser to perform some actions. For that it uses a headless Chrome to runs the
 tests from the [Galaxy repo](https://github.com/galaxyproject/galaxy/tree/dev/lib/galaxy_test/selenium).
 The GitHub Actions currently just run a few of those. To select more tests,
 set the env variable `TESTS` to a comma separated list (like `TESTS=navigates_galaxy.py,login.py`).
@@ -330,7 +330,7 @@ which tests we have excluded (at least for now).
 Tool specific configuration can be applied via `base_config.yml` or the following
 environment variables:
 * `GALAXY_CONFIG_`
-* `GALAXY_UWSGI_CONFIG_`
+* `GRAVITY_CONFIG_`
 * `NGINX_CONFIG_`
 * `PULSAR_CONFIG_`
 * `HTCONDOR_MASTER_CONFIG_`
@@ -354,7 +354,7 @@ The following are settings specific to this docker-compose setup:
 | Variable                  | Description                                                                                                        |
 |---------------------------|--------------------------------------------------------------------------------------------------------------------|
 | `NGINX_OVERWRITE_CONFIG`  | Also see `GALAXY_OVERWRITE_CONFIG`. |
-| `NGINX_UWSGI_READ_TIMEOUT` | Determines how long Nginx will wait (in seconds) for Galaxy to respond to a request until it times out. Defaults to 180 seconds. |
+| `NGINX_PROXY_READ_TIMEOUT` | Determines how long Nginx will wait (in seconds) for Galaxy to respond to a request until it times out. Defaults to 180 seconds. |
 
 ### Pulsar
 | Variable                  | Description                                                                                                        |
@@ -378,7 +378,7 @@ The following are settings specific to this docker-compose setup:
 | `GALAXY_K8S_DOCKER_REPO_DEFAULT` | The Docker Repo/Registry to use if the resolver could not resolve the proper image for a job. Defaults to `docker.io`. |
 | `GALAXY_K8S_DOCKER_OWNER_DEFAULT` | The Owner/Username to use if the resolver could not resolve the proper image for a job. Is not set by default. |
 | `GALAXY_K8S_DOCKER_IMAGE_DEFAULT` | The Image to use if the resolver could not resolve the proper image for a job. Defaults to `ubuntu`. |
-| `GALAXY_K8S_DOCKER_TAG_DEFAULT` | The Image Tag to use if the resolver could not resolve the proper image for a job. Defaults to `20.04`. |
+| `GALAXY_K8S_DOCKER_TAG_DEFAULT` | The Image Tag to use if the resolver could not resolve the proper image for a job. Defaults to `22.04`. |
 
 ### HTCondor
 | Variable                    | Description                                                                                                        |
@@ -394,18 +394,20 @@ The following are settings specific to this docker-compose setup:
 | `SLURM_NODE_MEMORY`       | Amount of memory per node. Defaults to 1024. |
 | `SLURM_NODE_HOSTNAME`     | Docker Compose adds a prefix in front of the container names by default. Change this value to the name of your setup and `_slurm_node` (e.g. `compose_slurm_node`) to ensure a correct mapping of the Slurm nodes. |
 
-### Github Workflow Tests (Branch 20.09)
-| Setup                  | bioblend           | workflow ard       | workflow mapping_by_sequencing | workflow wf3-shed-tools (example1) | selenium           |
-|------------------------|--------------------|--------------------|--------------------------------|------------------------------------|--------------------|
-| Galaxy Base            | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:             | :x:                                | :heavy_check_mark: |
-| Galaxy Proxy Prefix    | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:             | :x:                                | :heavy_check_mark: |
-| HTCondor               | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:             | :x:                                | :heavy_check_mark: |
-| Slurm                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:             | :x:                                | :heavy_check_mark: |
-| Pulsar                 | :heavy_check_mark: | :x:                | :x:                            | :x:                                | :heavy_check_mark: |
-| k8s                    | :x:                | :x:                | :x:                            | :x:                                | :x:                |
-| Singularity            | :x:                | :x:                | :x:                            | :heavy_check_mark:                 | :x:                |
-| Slurm + Singularity    | :x:                | :x:                | :x:                            | :heavy_check_mark:                 | :x:                |
-| HTCondor + Singularity | :x:                | :x:                | :x:                            | :heavy_check_mark:                 | :x:                |
+### Github Workflow Tests (Branch 24.1)
+| Setup                  | bioblend           | workflow ard       | workflow quality_control | workflow wf3-shed-tools (example1) | selenium           |
+|------------------------|--------------------|--------------------|--------------------------|------------------------------------|--------------------|
+| Galaxy Base            | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:       | :heavy_check_mark:                 | :heavy_check_mark: |
+| Galaxy Proxy Prefix    | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:       | :heavy_check_mark:                 | :x:                |
+| HTCondor               | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:       | :heavy_check_mark:                 | :heavy_check_mark: |
+| Slurm                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:       | :heavy_check_mark:                 | :heavy_check_mark: |
+| Pulsar-REST            | :heavy_check_mark: | :heavy_check_mark: | :x:                      | :heavy_check_mark:                 | :heavy_check_mark: |
+| Pulsar-MQ              | :heavy_check_mark: | :heavy_check_mark: | :x:                      | :heavy_check_mark:                 | :heavy_check_mark: |
+| k8s                    | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:       | :heavy_check_mark:                 | :heavy_check_mark: |
+| Singularity            | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:       | :heavy_check_mark:                 | :heavy_check_mark: |
+| Pulsar-MQ + Singularity| :heavy_check_mark: | :heavy_check_mark: | :x:                      | :heavy_check_mark:                 | :heavy_check_mark: |
+| Slurm + Singularity    | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:       | :heavy_check_mark:                 | :heavy_check_mark: |
+| HTCondor + Singularity | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:       | :heavy_check_mark:                 | :heavy_check_mark: |
 
 
 Implemented: :heavy_check_mark:   

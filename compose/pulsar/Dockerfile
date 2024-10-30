@@ -2,9 +2,9 @@ ARG DOCKER_REGISTRY=quay.io
 ARG DOCKER_REGISTRY_USERNAME=bgruening
 ARG IMAGE_TAG=latest
 
-FROM buildpack-deps:20.04 as build_pulsar
+FROM buildpack-deps:22.04 as build_pulsar
 
-ARG PULSAR_RELEASE=0.14.0
+ARG PULSAR_RELEASE=0.15.6
 ARG PULSAR_REPO=https://github.com/galaxyproject/pulsar
 
 ENV PULSAR_ROOT=/pulsar
@@ -19,7 +19,7 @@ RUN mkdir /tmp/pulsar \
     && pip3 install wheel \
     && python3 -m venv $PULSAR_VIRTUALENV \
     && . $PULSAR_VIRTUALENV/bin/activate \
-    && pip3 install drmaa kombu pastescript pastedeploy pycurl uwsgi \
+    && pip3 install drmaa kombu pastescript pastedeploy pycurl uwsgi pydantic "aiohttp==3.10.9" \
     && cd /tmp/pulsar \
     && python3 /tmp/pulsar/setup.py install
 

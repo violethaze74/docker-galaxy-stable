@@ -34,6 +34,7 @@ def add_user(sa_session, security_agent, email, password, key=None, username="ad
             api_key.key = key
             sa_session.add(api_key)
             sa_session.flush()
+        sa_session.commit()
         return user
 
 

@@ -20,6 +20,7 @@ gravity:
 galaxy:
   tool_dependency_dir: /tool_deps
   tool_data_table_config_path: /cvmfs/data.galaxyproject.org/byhand/location/tool_data_table_conf.xml,/cvmfs/data.galaxyproject.org/managed/location/tool_data_table_conf.xml
+  tus_upload_store: /tus_upload_store
   enable_celery_tasks: true
   celery_conf:
     result_backend: redis://redis:6379/0

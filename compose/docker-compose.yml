@@ -14,11 +14,13 @@ services:
       # This is the directory where all your files from Galaxy will be stored
       # on your host system
       - ${EXPORT_DIR:-./export}/:/export/:delegated
+      - ${EXPORT_DIR:-./export}/tus_upload_store:/tus_upload_store:delegated
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - postgres
       - rabbitmq
       - redis
+      - rustus
     networks:
       - galaxy
   # The galaxy-configurator is responsible for the whole configuration of
@@ -93,6 +95,29 @@ services:
     hostname: redis
     volumes:
       - ${EXPORT_DIR:-./export}/redis:/data:delegated
+    networks:
+      - galaxy
+  # For file uploads
+  rustus:
+    image: s3rius/rustus:0.7.6-alpine
+    container_name: galaxy-rustus
+    hostname: rustus
+    environment:
+      - RUSTUS_STORAGE=file-storage
+      - RUSTUS_DATA_DIR=/data/
+      - RUSTUS_URL=${GALAXY_PROXY_PREFIX:-}/api/upload/resumable_upload
+      - RUSTUS_HOOKS_HTTP_URLS=http://nginx${GALAXY_PROXY_PREFIX:-}/api/upload/hooks
+      - RUSTUS_HOOKS_HTTP_PROXY_HEADERS=X-Api-Key,Cookie
+      - RUSTUS_HOOKS=pre-create
+      - RUSTUS_HOOKS_FORMAT=tusd
+      - RUSTUS_INFO_STORAGE=redis-info-storage
+      - RUSTUS_INFO_DB_DSN=redis://redis:6379/1
+      - RUSTUS_MAX_BODY_SIZE=20000000
+      - RUSTUS_BEHIND_PROXY=true
+    volumes:
+      - ${EXPORT_DIR:-./export}/tus_upload_store:/data:delegated
+    depends_on:
+      - redis
     networks:
       - galaxy
 networks:

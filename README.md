@@ -356,10 +356,10 @@ If you are *very* sure that everything went well, you can delete `/export/postgr
 
 Interactive Tools (IT) are sophisticated ways to extend Galaxy with powerful services, like [Jupyter](http://jupyter.org/), in a secure and reproducible way.
 
-For this we need to be able to launch Docker containers inside our Galaxy Docker container. At least docker 1.3 is needed on the host system.
+For this we need to be able to launch Docker containers inside our Galaxy Docker container.
 
 ```sh
-docker run -d -p 8080:80 -p 8021:21 \
+docker run -d -p 8080:80 -p 8021:21 -p 4002:4002 \
     --privileged=true \
     -v /home/user/galaxy_storage/:/export/ \
     bgruening/galaxy-stable
@@ -372,7 +372,7 @@ Additionally, you can set the `GALAXY_DOMAIN` environment variable to specify th
 If you're using the default job configuration, set the `GALAXY_DESTINATIONS_DEFAULT` environment variable to a Docker-enabled destination. By default, this is set to `slurm_cluster`, so you'll need to update it accordingly. Alternatively, you can also provide your own job configuration file. 
 
 ```sh
-docker run -d -p 8080:80 -p 8021:21 \
+docker run -d -p 8080:80 -p 8021:21 -p 4002:4002 \
     --privileged=true \
     -v /home/user/galaxy_storage/:/export/ \
     -e "GALAXY_DOMAIN=your.domain.com" \

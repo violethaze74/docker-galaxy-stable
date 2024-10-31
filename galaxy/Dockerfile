@@ -206,7 +206,7 @@ RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     && ln -s /tool_deps/ $EXPORT_DIR/tool_deps \
     # Configure Galaxy to use the Tool Shed
     && chown $GALAXY_USER:$GALAXY_USER $EXPORT_DIR/tool_deps \
-    && apt update -qq && apt install --no-install-recommends -y ansible gpg gpg-agent g++ make \
+    && apt update -qq && apt install --no-install-recommends -y ansible gpg gpg-agent g++ make bsdmainutils \
     && ansible-playbook /ansible/provision.yml \
     --extra-vars galaxy_venv_dir=$GALAXY_VIRTUAL_ENV \
     --extra-vars galaxy_log_dir=$GALAXY_LOGS_DIR \
@@ -341,10 +341,11 @@ RUN chmod +x $GALAXY_ROOT_DIR/run.sh && \
 # (without running the startup.sh script) will crash because integrated_tool_panel.xml could not be found.
 ENV GALAXY_CONFIG_INTEGRATED_TOOL_PANEL_CONFIG $EXPORT_DIR/galaxy-central/integrated_tool_panel.xml
 
-# Expose port 80, 443 (webserver), 21 (FTP server), 9002 (supvisord web app)
+# Expose port 80, 443 (webserver), 21 (FTP server), 4002 (Proxy), 9002 (supvisord web app)
 EXPOSE 21
 EXPOSE 80
 EXPOSE 443
+EXPOSE 4002
 EXPOSE 9002
 
 # Mark folders as imported from the host.

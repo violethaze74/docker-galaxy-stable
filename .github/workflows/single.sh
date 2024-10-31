@@ -19,7 +19,6 @@ docker info
 
 # start building this repo
 git submodule update --init --recursive
-git submodule update --remote --rebase
 sudo chown 1450 /tmp && sudo chmod a=rwx /tmp
 
 ## define a container size check function, first parameter is the container name, second the max allowed size in MB
@@ -89,9 +88,9 @@ curl -v --fail $BIOBLEND_GALAXY_URL/api/version
 
 # Test self-signed HTTPS
 docker_run -d --name httpstest -p 443:443 -e "USE_HTTPS=True" $DOCKER_RUN_CONTAINER
-# TODO 19.05
-# - sleep 90s && curl -v -k --fail https://127.0.0.1:443/api/version
-#- echo | openssl s_client -connect 127.0.0.1:443 2>/dev/null | openssl x509 -issuer -noout| grep selfsigned
+
+sleep 180s && curl -v -k --fail https://127.0.0.1:443/api/version
+echo | openssl s_client -connect 127.0.0.1:443 2>/dev/null | openssl x509 -issuer -noout| grep selfsigned
 
 docker logs httpstest && docker stop httpstest && docker rm httpstest
 

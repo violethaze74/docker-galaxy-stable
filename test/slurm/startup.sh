@@ -16,7 +16,7 @@ fi
 
 if [ ! -f "$SLURM_CONF_PATH" ]
   then
-    python /usr/local/bin/configure_slurm.py
+    python3 /usr/local/bin/configure_slurm.py
     cp /etc/slurm/slurm.conf "$SLURM_CONF_PATH"
     rm /etc/slurm/slurm.conf
 fi

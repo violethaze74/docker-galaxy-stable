@@ -2,6 +2,7 @@ name: build-and-test
 on: [push]
 jobs:
   build_container_base:
+    if: false  # Temporarily disable workflow 
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout

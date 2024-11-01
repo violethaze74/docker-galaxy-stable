@@ -10,3 +10,7 @@
 [submodule "galaxy/roles/galaxy-tusd"]
 	path = galaxy/roles/galaxy-tusd
 	url = https://github.com/galaxyproject/ansible-role-tusd
+
+[submodule "galaxy/roles/galaxy-flower"]
+	path = galaxy/roles/galaxy-flower
+	url = https://github.com/usegalaxy-eu/flower-ansible-role

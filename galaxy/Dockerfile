@@ -196,6 +196,12 @@ RUN ansible-playbook /ansible/tusd_provision.yml \
     && mkdir -p $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     && chown $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_TUS_UPLOAD_STORE
 
+# Install flower
+RUN export PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH \
+    && ansible-playbook /ansible/flower_provision.yml --skip-tags service \
+    --extra-vars flower_venv_dir=$GALAXY_VIRTUAL_ENV \
+    --extra-vars flower_db_file=$GALAXY_ROOT_DIR/database/flower.db
+
 # cleanup dance
 RUN apt purge ansible software-properties-common dirmngr gpg gpg-agent -y && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
     && find $GALAXY_ROOT_DIR/ -name '*.pyc' -delete | true \
@@ -233,7 +239,7 @@ RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ \
     --extra-vars galaxy_extras_config_rabbitmq=True \
     --extra-vars galaxy_extras_config_redis=True \
     --extra-vars galaxy_extras_config_flower=True \
-    --extra-vars galaxy_extras_config_tusd=False \
+    --extra-vars galaxy_extras_config_tusd=True \
     --extra-vars galaxy_extras_config_cvmfs=True \
     --extra-vars galaxy_extras_config_gravity=True \
     --extra-vars proftpd_db_connection=galaxy@galaxy \
@@ -245,7 +251,7 @@ RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ \
     --extra-vars nginx_use_remote_header=True \
     --extra-vars tus_upload_store_path=$GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars gx_it_proxy_sessions_path=$GALAXY_CONFIG_INTERACTIVETOOLS_MAP \
-    --tags=galaxyextras,cvmfs -c local \
+    --tags=galaxyextras,cvmfs --skip-tags=tusd,flower -c local \
     && . $GALAXY_VIRTUAL_ENV/bin/activate \
     && pip install WeasyPrint \
     && deactivate \

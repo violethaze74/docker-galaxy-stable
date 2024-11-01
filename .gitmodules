@@ -6,3 +6,7 @@
 [submodule "galaxy/roles/galaxy-postgresql"]
 	path = galaxy/roles/galaxy-postgresql
 	url = https://github.com/galaxyproject/ansible-postgresql
+
+[submodule "galaxy/roles/galaxy-tusd"]
+	path = galaxy/roles/galaxy-tusd
+	url = https://github.com/galaxyproject/ansible-role-tusd

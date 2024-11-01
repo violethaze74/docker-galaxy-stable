@@ -176,17 +176,28 @@ ADD ./tools_conf_interactive.xml.sample $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE
 RUN chown $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE
 RUN chmod 0644 $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE
 
-ADD roles/ /ansible/roles
-ADD provision.yml /ansible/provision.yml
-ADD postgresql_provision.yml /ansible/postgresql_provision.yml
+# Make python3 standard
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 10
 
-## This is playbook is modifying/installing python2 and python3 stuff
-RUN apt update -qq && apt install --no-install-recommends -y ansible dirmngr gpg gpg-agent \
-    && ansible-playbook /ansible/postgresql_provision.yml \
-    && apt purge ansible dirmngr gpg gpg-agent -y && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
-    # Make python3 standard
-    && update-alternatives --install /usr/bin/python python /usr/bin/python3 10 \
-    # cleanup dance
+ADD roles/ /ansible/roles
+ADD ansible/ /ansible/
+
+# Install ansible and related dependencies
+RUN apt update -qq && apt install --no-install-recommends -y software-properties-common dirmngr gpg gpg-agent \
+    && sudo add-apt-repository ppa:ansible/ansible \
+    && apt install --no-install-recommends -y ansible \
+    && apt purge -y systemd
+
+# Install postgresql
+RUN ansible-playbook /ansible/postgresql_provision.yml
+
+# Install tusd
+RUN ansible-playbook /ansible/tusd_provision.yml \
+    && mkdir -p $GALAXY_CONFIG_TUS_UPLOAD_STORE \
+    && chown $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_TUS_UPLOAD_STORE
+
+# cleanup dance
+RUN apt purge ansible software-properties-common dirmngr gpg gpg-agent -y && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
     && find $GALAXY_ROOT_DIR/ -name '*.pyc' -delete | true \
     && find /usr/lib/ -name '*.pyc' -delete | true \
     && find $GALAXY_VIRTUAL_ENV -name '*.pyc' -delete | true \
@@ -201,8 +212,8 @@ ADD ./setup_postgresql.py /usr/local/bin/setup_postgresql.py
 # 2. Create DB-user 'galaxy' with password 'galaxy' in database 'galaxy'
 # 3. Create Galaxy Admin User 'admin@galaxy.org' with password 'admin' and API key 'admin'
 
-RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ $GALAXY_CONFIG_TUS_UPLOAD_STORE \
-    && chown $GALAXY_USER:$GALAXY_USER /shed_tools $EXPORT_DIR/ftp $GALAXY_CONFIG_TUS_UPLOAD_STORE \
+RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ \
+    && chown $GALAXY_USER:$GALAXY_USER /shed_tools $EXPORT_DIR/ftp \
     && ln -s /tool_deps/ $EXPORT_DIR/tool_deps \
     # Configure Galaxy to use the Tool Shed
     && chown $GALAXY_USER:$GALAXY_USER $EXPORT_DIR/tool_deps \
@@ -222,7 +233,7 @@ RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars galaxy_extras_config_rabbitmq=True \
     --extra-vars galaxy_extras_config_redis=True \
     --extra-vars galaxy_extras_config_flower=True \
-    --extra-vars galaxy_extras_config_tusd=True \
+    --extra-vars galaxy_extras_config_tusd=False \
     --extra-vars galaxy_extras_config_cvmfs=True \
     --extra-vars galaxy_extras_config_gravity=True \
     --extra-vars proftpd_db_connection=galaxy@galaxy \

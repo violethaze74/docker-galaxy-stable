@@ -1,20 +1,28 @@
-[submodule "galaxy/roles/galaxyproject.galaxyextras"]
-	path = galaxy/roles/galaxyprojectdotorg.galaxyextras
+[submodule "galaxy/ansible/roles/galaxyproject.galaxyextras"]
+	path = galaxy/ansible/roles/galaxyprojectdotorg.galaxyextras
 	url = https://github.com/jyotipm29/ansible-galaxy-extras
 	branch = 24.1
 
-[submodule "galaxy/roles/galaxy-postgresql"]
-	path = galaxy/roles/galaxy-postgresql
+[submodule "galaxy/ansible/roles/galaxy-postgresql"]
+	path = galaxy/ansible/roles/galaxy-postgresql
 	url = https://github.com/galaxyproject/ansible-postgresql
 
-[submodule "galaxy/roles/galaxy-tusd"]
-	path = galaxy/roles/galaxy-tusd
+[submodule "galaxy/ansible/roles/galaxy-tusd"]
+	path = galaxy/ansible/roles/galaxy-tusd
 	url = https://github.com/galaxyproject/ansible-role-tusd
 
-[submodule "galaxy/roles/galaxy-flower"]
-	path = galaxy/roles/galaxy-flower
+[submodule "galaxy/ansible/roles/galaxy-flower"]
+	path = galaxy/ansible/roles/galaxy-flower
 	url = https://github.com/usegalaxy-eu/flower-ansible-role
 
-[submodule "galaxy/roles/galaxy-redis"]
-	path = galaxy/roles/galaxy-redis
+[submodule "galaxy/ansible/roles/galaxy-redis"]
+	path = galaxy/ansible/roles/galaxy-redis
 	url = https://github.com/geerlingguy/ansible-role-redis
+
+[submodule "galaxy/ansible/roles/galaxy-repos"]
+	path = galaxy/ansible/roles/galaxy-repos
+	url = https://github.com/galaxyproject/ansible-repos
+
+[submodule "galaxy/ansible/roles/galaxy-slurm"]
+	path = galaxy/ansible/roles/galaxy-slurm
+	url = https://github.com/galaxyproject/ansible-slurm

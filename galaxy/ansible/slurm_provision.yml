@@ -1,0 +1,41 @@
+- hosts: localhost
+  connection: local
+  remote_user: root
+  vars:
+    slurm_roles: ['controller', 'exec']
+    slurm_config:
+      SlurmctldHost: localhost
+      SlurmUser: '{{ galaxy_user_name }}'
+      SelectType: select/cons_tres
+      SelectTypeParameters: CR_Core_Memory
+      StateSaveLocation: /tmp/slurm
+      ReturnToService: 1
+  roles:
+      - role: galaxy-repos
+      - role: galaxy-slurm
+  tasks:
+    - name: Install slurm-drmaa package
+      package:
+        name: slurm-drmaa1
+        state: present
+
+    - name: Create symbolic link for libdrmaa.so
+      file:
+        src: /usr/lib/slurm-drmaa/lib/libdrmaa.so.1
+        dest: /usr/lib/slurm-drmaa/lib/libdrmaa.so
+        state: link
+
+    - name: Setup tmp area for slurm
+      file: path=/tmp/slurm state=directory owner={{ galaxy_user_name }} group={{ galaxy_user_name }}
+
+    - name: Add script to update slurm configuration file
+      template: src=configure_slurm.py.j2 dest=/usr/sbin/configure_slurm.py mode=0755
+
+    - name: Setup Munge permissions and folder
+      file: path={{ item }} state=directory owner=root group=root recurse=yes
+      with_items:
+        - /var/run/munge
+        - /var/lib/munge
+        - /var/log/munge
+        - /var/run/munge
+        - /etc/munge

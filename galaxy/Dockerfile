@@ -91,7 +91,6 @@ RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
     && apt-get -qq update && apt-get install --no-install-recommends -y software-properties-common gpg-agent curl sudo \
     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - \
     && add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-    && sudo add-apt-repository ppa:natefoo/slurm-drmaa \
     && curl -fsSL https://research.cs.wisc.edu/htcondor/repo/keys/HTCondor-current-Key | sudo apt-key add - \
     && sudo add-apt-repository "deb https://research.cs.wisc.edu/htcondor/repo/ubuntu/current jammy main" \
     && apt-get update -qq \
@@ -99,10 +98,7 @@ RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
     ## && apt-get install postgresql-10 --no-install-recommends -y \
     && apt-get install nginx-extras nginx-common --no-install-recommends -y \
     && apt-get install docker-ce --no-install-recommends -y \
-    && apt-get install slurm-client slurmd slurmctld slurm-drmaa1 --no-install-recommends -y \
-    && ln -s /usr/lib/slurm-drmaa/lib/libdrmaa.so.1 /usr/lib/slurm-drmaa/lib/libdrmaa.so \
     && apt-get install proftpd proftpd-mod-pgsql proftpd-mod-crypto --no-install-recommends -y \
-    && apt-get install munge libmunge-dev --no-install-recommends -y \
     && apt-get install nano --no-install-recommends -y \
     && apt-get install htcondor --no-install-recommends -y \
     && apt-get install git --no-install-recommends -y \
@@ -177,11 +173,10 @@ RUN chmod 0644 $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool
 # Make python3 standard
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 10
 
-ADD roles/ /ansible/roles
 ADD ansible/ /ansible/
 
 # Install ansible and related dependencies
-RUN apt update -qq && apt install --no-install-recommends -y software-properties-common dirmngr gpg gpg-agent \
+RUN apt update -qq && apt install --no-install-recommends -y software-properties-common dirmngr gpg gpg-agent bsdmainutils \
     && sudo add-apt-repository ppa:ansible/ansible \
     && apt install --no-install-recommends -y ansible \
     && apt purge -y systemd
@@ -209,28 +204,16 @@ RUN ansible-playbook /ansible/redis_provision.yml \
     --extra-vars redis_venv_dir=$GALAXY_VIRTUAL_ENV \
     --extra-vars redis_user=$GALAXY_USER
 
-# cleanup dance
-RUN apt purge ansible software-properties-common dirmngr gpg gpg-agent -y && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
-    && find $GALAXY_ROOT_DIR/ -name '*.pyc' -delete | true \
-    && find /usr/lib/ -name '*.pyc' -delete | true \
-    && find $GALAXY_VIRTUAL_ENV -name '*.pyc' -delete | true \
-    && rm -rf /tmp/* /root/.cache/ /var/cache/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm
-
-
-# Include all needed scripts from the host
-ADD ./setup_postgresql.py /usr/local/bin/setup_postgresql.py
-
-# Configure PostgreSQL
-# 1. Remove all old configuration
-# 2. Create DB-user 'galaxy' with password 'galaxy' in database 'galaxy'
-# 3. Create Galaxy Admin User 'admin@galaxy.org' with password 'admin' and API key 'admin'
+# Install slurm
+RUN ansible-playbook /ansible/slurm_provision.yml \
+    --extra-vars galaxy_user_name=$GALAXY_USER
 
 RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ \
     && chown $GALAXY_USER:$GALAXY_USER /shed_tools $EXPORT_DIR/ftp \
     && ln -s /tool_deps/ $EXPORT_DIR/tool_deps \
     # Configure Galaxy to use the Tool Shed
     && chown $GALAXY_USER:$GALAXY_USER $EXPORT_DIR/tool_deps \
-    && apt update -qq && apt install --no-install-recommends -y ansible gpg gpg-agent g++ make bsdmainutils \
+    && apt update -qq && apt install --no-install-recommends -y g++ make \
     && ansible-playbook /ansible/provision.yml \
     --extra-vars galaxy_venv_dir=$GALAXY_VIRTUAL_ENV \
     --extra-vars galaxy_log_dir=$GALAXY_LOGS_DIR \
@@ -258,7 +241,7 @@ RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ \
     --extra-vars nginx_use_remote_header=True \
     --extra-vars tus_upload_store_path=$GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars gx_it_proxy_sessions_path=$GALAXY_CONFIG_INTERACTIVETOOLS_MAP \
-    --tags=galaxyextras,cvmfs --skip-tags=tusd,flower,redis -c local \
+    --tags=galaxyextras,cvmfs --skip-tags=tusd,flower,redis,slurm -c local \
     && . $GALAXY_VIRTUAL_ENV/bin/activate \
     && pip install WeasyPrint \
     && deactivate \
@@ -266,18 +249,27 @@ RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ \
     && cd $GALAXY_ROOT_DIR && ./scripts/common_startup.sh \
     && cd config && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + \
     && find . -name '.cache' -type d -prune -exec rm -rf '{}' + \
-    && cd / \
-    && rm $PG_DATA_DIR_DEFAULT -rf \
-    && python /usr/local/bin/setup_postgresql.py --dbuser galaxy --dbpassword galaxy --db-name galaxy --dbpath $PG_DATA_DIR_DEFAULT --dbversion $PG_VERSION \
-    && service postgresql start \
-    && service postgresql stop \
-    && apt purge gpg gpg-agent g++ make gcc -y && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && rm -rf ~/.cache/ \
+    && apt purge software-properties-common dirmngr gpg gpg-agent g++ make gcc -y && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ~/.cache/ \
     # cleanup dance
     && find $GALAXY_ROOT_DIR/ -name '*.pyc' -delete | true \
     && find /usr/lib/ -name '*.pyc' -delete | true \
     && find /var/log/ -name '*.log' -delete | true \
     && find $GALAXY_VIRTUAL_ENV -name '*.pyc' -delete | true \
     && rm -rf /tmp/* /root/.cache/ /var/cache/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm
+
+# Include all needed scripts from the host
+ADD ./setup_postgresql.py /usr/local/bin/setup_postgresql.py
+
+# Configure PostgreSQL
+# 1. Remove all old configuration
+# 2. Create DB-user 'galaxy' with password 'galaxy' in database 'galaxy'
+# 3. Create Galaxy Admin User 'admin@galaxy.org' with password 'admin' and API key 'admin'
+
+RUN cd / \
+    && rm $PG_DATA_DIR_DEFAULT -rf \
+    && python /usr/local/bin/setup_postgresql.py --dbuser galaxy --dbpassword galaxy --db-name galaxy --dbpath $PG_DATA_DIR_DEFAULT --dbversion $PG_VERSION \
+    && service postgresql start \
+    && service postgresql stop
 
 RUN touch /var/log/condor/StartLog /var/log/condor/StarterLog /var/log/condor/CollectorLog /var/log/condor/NegotiatorLog && \
     mkdir -p /var/run/condor/ /var/lock/condor/ && \

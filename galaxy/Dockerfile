@@ -134,7 +134,6 @@ RUN curl -s -L https://repo.anaconda.com/miniconda/Miniconda3-py310_24.5.0-0-Lin
     && echo ". $GALAXY_CONDA_PREFIX/etc/profile.d/conda.sh" >> $GALAXY_HOME/.bashrc \
     && echo "conda activate base" >> $GALAXY_HOME/.bashrc \
     && export PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH \
-    && conda config --add channels defaults \
     && conda config --add channels bioconda \
     && conda config --add channels conda-forge \
     && conda install virtualenv pip ephemeris \

@@ -108,7 +108,6 @@ RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
     && apt-get install git --no-install-recommends -y \
     && apt-get install gridengine-common gridengine-drmaa1.0 --no-install-recommends -y \
     && apt-get install rabbitmq-server --no-install-recommends -y \
-    && apt-get install redis-server --no-install-recommends -y \
     && apt-get install --no-install-recommends -y libswitch-perl supervisor \
     && apt-get purge -y software-properties-common gpg-agent systemd \
     && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && rm -rf ~/.cache/ \
@@ -200,7 +199,16 @@ RUN ansible-playbook /ansible/tusd_provision.yml \
 RUN export PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH \
     && ansible-playbook /ansible/flower_provision.yml --skip-tags service \
     --extra-vars flower_venv_dir=$GALAXY_VIRTUAL_ENV \
-    --extra-vars flower_db_file=$GALAXY_ROOT_DIR/database/flower.db
+    --extra-vars flower_db_file=$GALAXY_ROOT_DIR/database/flower.db \
+    --extra-vars flower_user=$GALAXY_USER \
+    --extra-vars flower_group=$GALAXY_USER \
+    --extra-vars flower_venv_user=$GALAXY_USER \
+    --extra-vars flower_venv_group=$GALAXY_USER
+
+# Install redis
+RUN ansible-playbook /ansible/redis_provision.yml \
+    --extra-vars redis_venv_dir=$GALAXY_VIRTUAL_ENV \
+    --extra-vars redis_user=$GALAXY_USER
 
 # cleanup dance
 RUN apt purge ansible software-properties-common dirmngr gpg gpg-agent -y && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
@@ -251,7 +259,7 @@ RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ \
     --extra-vars nginx_use_remote_header=True \
     --extra-vars tus_upload_store_path=$GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars gx_it_proxy_sessions_path=$GALAXY_CONFIG_INTERACTIVETOOLS_MAP \
-    --tags=galaxyextras,cvmfs --skip-tags=tusd,flower -c local \
+    --tags=galaxyextras,cvmfs --skip-tags=tusd,flower,redis -c local \
     && . $GALAXY_VIRTUAL_ENV/bin/activate \
     && pip install WeasyPrint \
     && deactivate \

@@ -14,3 +14,7 @@
 [submodule "galaxy/roles/galaxy-flower"]
 	path = galaxy/roles/galaxy-flower
 	url = https://github.com/usegalaxy-eu/flower-ansible-role
+
+[submodule "galaxy/roles/galaxy-redis"]
+	path = galaxy/roles/galaxy-redis
+	url = https://github.com/geerlingguy/ansible-role-redis

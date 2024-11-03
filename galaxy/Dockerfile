@@ -22,7 +22,8 @@ ENV GALAXY_RELEASE=${GALAXY_RELEASE:-release_24.1} \
     GALAXY_CONFIG_DIR=/etc/galaxy \
     EXPORT_DIR=/export \
     DEBIAN_FRONTEND=noninteractive \
-    PG_VERSION=15
+    PG_VERSION=15 \
+    MINIFORGE_VERSION=24.3.0-0
 
 ENV GALAXY_CONFIG_FILE=$GALAXY_CONFIG_DIR/galaxy.yml \
     GALAXY_CONFIG_JOB_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_conf.xml \
@@ -116,18 +117,17 @@ RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
 
 ADD ./bashrc $GALAXY_HOME/.bashrc
 
-# Install miniconda, then virtualenv from conda and then
+# Install miniforge, then virtualenv from conda and then
 # download latest stable release of Galaxy.
 
-RUN curl -s -L https://repo.anaconda.com/miniconda/Miniconda3-py310_24.5.0-0-Linux-x86_64.sh > ~/miniconda.sh \
-    && /bin/bash ~/miniconda.sh -b -p $GALAXY_CONDA_PREFIX/ \
-    && rm ~/miniconda.sh \
+RUN curl -s -L https://github.com/conda-forge/miniforge/releases/download/$MINIFORGE_VERSION/Miniforge3-$MINIFORGE_VERSION-Linux-x86_64.sh > ~/miniforge.sh \
+    && /bin/bash ~/miniforge.sh -b -p $GALAXY_CONDA_PREFIX/ \
+    && rm ~/miniforge.sh \
     && ln -s $GALAXY_CONDA_PREFIX/etc/profile.d/conda.sh /etc/profile.d/conda.sh \
     && echo ". $GALAXY_CONDA_PREFIX/etc/profile.d/conda.sh" >> $GALAXY_HOME/.bashrc \
     && echo "conda activate base" >> $GALAXY_HOME/.bashrc \
     && export PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH \
     && conda config --add channels bioconda \
-    && conda config --add channels conda-forge \
     && conda install virtualenv pip ephemeris \
     && chown $GALAXY_USER:$GALAXY_USER -R /tool_deps/ /etc/profile.d/conda.sh \
     && conda clean --packages -t -i \

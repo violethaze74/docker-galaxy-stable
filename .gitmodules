@@ -26,3 +26,7 @@
 [submodule "galaxy/ansible/roles/galaxy-slurm"]
 	path = galaxy/ansible/roles/galaxy-slurm
 	url = https://github.com/galaxyproject/ansible-slurm
+
+[submodule "galaxy/ansible/roles/galaxy-htcondor"]
+	path = galaxy/ansible/roles/galaxy-htcondor
+	url = https://github.com/usegalaxy-eu/ansible-htcondor-grycap

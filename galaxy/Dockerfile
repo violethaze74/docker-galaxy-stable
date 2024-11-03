@@ -91,8 +91,6 @@ RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
     && apt-get -qq update && apt-get install --no-install-recommends -y software-properties-common gpg-agent curl sudo \
     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - \
     && add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-    && curl -fsSL https://research.cs.wisc.edu/htcondor/repo/keys/HTCondor-current-Key | sudo apt-key add - \
-    && sudo add-apt-repository "deb https://research.cs.wisc.edu/htcondor/repo/ubuntu/current jammy main" \
     && apt-get update -qq \
     ## && apt-get purge -y software-properties-common gpg-agent \
     ## && apt-get install postgresql-10 --no-install-recommends -y \
@@ -100,7 +98,6 @@ RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
     && apt-get install docker-ce --no-install-recommends -y \
     && apt-get install proftpd proftpd-mod-pgsql proftpd-mod-crypto --no-install-recommends -y \
     && apt-get install nano --no-install-recommends -y \
-    && apt-get install htcondor --no-install-recommends -y \
     && apt-get install git --no-install-recommends -y \
     && apt-get install gridengine-common gridengine-drmaa1.0 --no-install-recommends -y \
     && apt-get install rabbitmq-server --no-install-recommends -y \
@@ -179,7 +176,7 @@ ADD ansible/ /ansible/
 RUN apt update -qq && apt install --no-install-recommends -y software-properties-common dirmngr gpg gpg-agent bsdmainutils \
     && sudo add-apt-repository ppa:ansible/ansible \
     && apt install --no-install-recommends -y ansible \
-    && apt purge -y systemd
+    && apt purge -y systemd && apt-get autoremove -y && apt-get clean
 
 # Install postgresql
 RUN ansible-playbook /ansible/postgresql_provision.yml
@@ -207,6 +204,11 @@ RUN ansible-playbook /ansible/redis_provision.yml \
 # Install slurm
 RUN ansible-playbook /ansible/slurm_provision.yml \
     --extra-vars galaxy_user_name=$GALAXY_USER
+
+# Install htcondor
+RUN ansible-playbook /ansible/htcondor_provision.yml \
+    --extra-vars galaxy_user_name=$GALAXY_USER \
+    && apt purge -y systemd && apt-get autoremove -y && apt-get clean
 
 RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ \
     && chown $GALAXY_USER:$GALAXY_USER /shed_tools $EXPORT_DIR/ftp \
@@ -241,7 +243,7 @@ RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ \
     --extra-vars nginx_use_remote_header=True \
     --extra-vars tus_upload_store_path=$GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars gx_it_proxy_sessions_path=$GALAXY_CONFIG_INTERACTIVETOOLS_MAP \
-    --tags=galaxyextras,cvmfs --skip-tags=tusd,flower,redis,slurm -c local \
+    --tags=galaxyextras,cvmfs --skip-tags=tusd,flower,redis,slurm,condor -c local \
     && . $GALAXY_VIRTUAL_ENV/bin/activate \
     && pip install WeasyPrint \
     && deactivate \
@@ -270,10 +272,6 @@ RUN cd / \
     && python /usr/local/bin/setup_postgresql.py --dbuser galaxy --dbpassword galaxy --db-name galaxy --dbpath $PG_DATA_DIR_DEFAULT --dbversion $PG_VERSION \
     && service postgresql start \
     && service postgresql stop
-
-RUN touch /var/log/condor/StartLog /var/log/condor/StarterLog /var/log/condor/CollectorLog /var/log/condor/NegotiatorLog && \
-    mkdir -p /var/run/condor/ /var/lock/condor/ && \
-    chown -R condor: /var/log/condor/StartLog /var/log/condor/StarterLog /var/log/condor/CollectorLog /var/log/condor/NegotiatorLog /var/run/condor/ /var/lock/condor/
 
 # The following commands will be executed as the galaxy user
 USER $GALAXY_USER
@@ -341,9 +339,6 @@ ADD install_biojs_vis.sh /usr/bin/install-biojs
 RUN chmod +x /usr/bin/install-tools /usr/bin/install-biojs && \
     cd /usr/bin/ && curl https://git.embl.de/grp-gbcs/galaxy-dir-sync/raw/master/src/galaxy-dir-sync.py > galaxy-dir-sync.py && \
     chmod +x galaxy-dir-sync.py
-
-RUN echo "DISCARD_SESSION_KEYRING_ON_STARTUP=False" > /etc/condor/condor_config.local && \
-    echo "TRUST_UID_DOMAIN=true" >> /etc/condor/condor_config.local
 
 # use https://github.com/krallin/tini/ as tiny but valid init and PID 1
 ADD https://github.com/krallin/tini/releases/download/v0.18.0/tini /sbin/tini

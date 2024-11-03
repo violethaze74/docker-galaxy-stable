@@ -68,7 +68,7 @@
         - 'DISCARD_SESSION_KEYRING_ON_STARTUP=False'
         - 'TRUST_UID_DOMAIN=true'
 
-  # Remove the init script
+  # Remove the init script and systemd
   post_tasks:
     - name: Stop HTCondor service
       command: /etc/init.d/condor stop
@@ -80,3 +80,6 @@
 
     - name: Remove HTCondor init script registration
       command: update-rc.d -f condor remove
+    
+    - name: Purge systemd and perform cleanup
+      shell: apt purge -y systemd && apt-get autoremove -y && apt-get clean

@@ -96,7 +96,6 @@ RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
     ## && apt-get install postgresql-10 --no-install-recommends -y \
     && apt-get install nginx-extras nginx-common --no-install-recommends -y \
     && apt-get install docker-ce --no-install-recommends -y \
-    && apt-get install proftpd proftpd-mod-pgsql proftpd-mod-crypto --no-install-recommends -y \
     && apt-get install nano --no-install-recommends -y \
     && apt-get install git --no-install-recommends -y \
     && apt-get install gridengine-common gridengine-drmaa1.0 --no-install-recommends -y \
@@ -174,7 +173,7 @@ ADD ansible/ /ansible/
 
 # Install ansible and related dependencies
 RUN apt update -qq && apt install --no-install-recommends -y software-properties-common dirmngr gpg gpg-agent bsdmainutils \
-    && sudo add-apt-repository ppa:ansible/ansible \
+    && sudo add-apt-repository ppa:ansible/ansible-7 \
     && apt install --no-install-recommends -y ansible \
     && apt purge -y systemd && apt-get autoremove -y && apt-get clean
 
@@ -207,11 +206,18 @@ RUN ansible-playbook /ansible/slurm_provision.yml \
 
 # Install htcondor
 RUN ansible-playbook /ansible/htcondor_provision.yml \
-    --extra-vars galaxy_user_name=$GALAXY_USER \
-    && apt purge -y systemd && apt-get autoremove -y && apt-get clean
+    --extra-vars galaxy_user_name=$GALAXY_USER
 
-RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ \
-    && chown $GALAXY_USER:$GALAXY_USER /shed_tools $EXPORT_DIR/ftp \
+# Install proftpd
+RUN ansible-playbook /ansible/proftpd_provision.yml \
+    --extra-vars galaxy_user_name=$GALAXY_USER \
+    --extra-vars proftpd_sql_db=galaxy@galaxy \
+    --extra-vars proftpd_sql_user=$GALAXY_USER \
+    --extra-vars proftpd_sql_password=$GALAXY_USER \
+    --extra-vars galaxy_ftp_upload_dir=$EXPORT_DIR/ftp
+
+RUN mkdir -p /shed_tools \
+    && chown $GALAXY_USER:$GALAXY_USER /shed_tools \
     && ln -s /tool_deps/ $EXPORT_DIR/tool_deps \
     # Configure Galaxy to use the Tool Shed
     && chown $GALAXY_USER:$GALAXY_USER $EXPORT_DIR/tool_deps \
@@ -234,16 +240,14 @@ RUN mkdir -p /shed_tools $EXPORT_DIR/ftp/ \
     --extra-vars galaxy_extras_config_tusd=True \
     --extra-vars galaxy_extras_config_cvmfs=True \
     --extra-vars galaxy_extras_config_gravity=True \
-    --extra-vars proftpd_db_connection=galaxy@galaxy \
-    --extra-vars proftpd_files_dir=$EXPORT_DIR/ftp \
-    --extra-vars proftpd_use_sftp=True \
     --extra-vars galaxy_extras_docker_legacy=False \
     --extra-vars supervisor_postgres_config_path=$PG_CONF_DIR_DEFAULT/postgresql.conf \
     --extra-vars supervisor_postgres_autostart=false \
     --extra-vars nginx_use_remote_header=True \
     --extra-vars tus_upload_store_path=$GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars gx_it_proxy_sessions_path=$GALAXY_CONFIG_INTERACTIVETOOLS_MAP \
-    --tags=galaxyextras,cvmfs --skip-tags=tusd,flower,redis,slurm,condor -c local \
+    --extra-vars use_pbkdf2=True \
+    --tags=galaxyextras,cvmfs --skip-tags=tusd,flower,redis,slurm,condor,proftpd -c local \
     && . $GALAXY_VIRTUAL_ENV/bin/activate \
     && pip install WeasyPrint \
     && deactivate \
@@ -288,7 +292,7 @@ ENV GALAXY_CONFIG_JOB_WORKING_DIRECTORY=$EXPORT_DIR/galaxy-central/database/job_
     GALAXY_CONFIG_CITATION_CACHE_DATA_DIR=$EXPORT_DIR/galaxy-central/database/citations/data \
     GALAXY_CONFIG_FTP_UPLOAD_DIR=$EXPORT_DIR/ftp \
     GALAXY_CONFIG_FTP_UPLOAD_SITE=galaxy.docker.org \
-    GALAXY_CONFIG_USE_PBKDF2=False \
+    GALAXY_CONFIG_USE_PBKDF2=True \
     GALAXY_CONFIG_NGINX_X_ACCEL_REDIRECT_BASE=/_x_accel_redirect \
     GALAXY_CONFIG_DYNAMIC_PROXY_MANAGE=False \
     GALAXY_CONFIG_VISUALIZATION_PLUGINS_DIRECTORY=config/plugins/visualizations \

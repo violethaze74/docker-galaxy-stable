@@ -11,7 +11,6 @@ MAINTAINER Björn A. Grüning, bjoern.gruening@gmail.com
 # * README: only Docker next to Docker is supported
 # * NodeJS is getting globally installed via the playbook, this is not needed anymore isn't it?
 # * the playbooks are not cleaning anything up
-# * autofs is big and should be installed during startup, only in case --priv is enables ?
 #
 ARG GALAXY_RELEASE
 ARG GALAXY_REPO
@@ -28,8 +27,8 @@ ENV GALAXY_RELEASE=${GALAXY_RELEASE:-release_24.1} \
 ENV GALAXY_CONFIG_FILE=$GALAXY_CONFIG_DIR/galaxy.yml \
     GALAXY_CONFIG_JOB_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_conf.xml \
     GALAXY_CONFIG_JOB_METRICS_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_metrics_conf.xml \
-    GALAXY_CONFIG_TOOL_CONFIG_FILE=/etc/galaxy/tool_conf.xml \
-    GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH=/etc/galaxy/tool_data_table_conf.xml \
+    GALAXY_CONFIG_TOOL_CONFIG_FILE=$GALAXY_CONFIG_DIR/tool_conf.xml \
+    GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH=$GALAXY_CONFIG_DIR/tool_data_table_conf.xml \
     GALAXY_CONFIG_WATCH_TOOL_DATA_DIR=True \
     GALAXY_CONFIG_TOOL_DEPENDENCY_DIR=$EXPORT_DIR/tool_deps \
     GALAXY_CONFIG_TOOL_PATH=$EXPORT_DIR/galaxy-central/tools \
@@ -163,8 +162,10 @@ ADD sample_tool_list.yaml $GALAXY_HOME/ephemeris/sample_tool_list.yaml
 # Activate Interactive Tools during runtime
 ADD ./tools_conf_interactive.xml.sample $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE
 
-RUN chown $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE
-RUN chmod 0644 $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE
+RUN curl -o $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH \
+    -L https://raw.githubusercontent.com/galaxyproject/usegalaxy-playbook/8adb1f82c94fe95b09df2a2816440ce2420b7d39/env/main/files/galaxy/config/tool_data_table_conf.xml \
+    && chown $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH \
+    && chmod 0644 $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH
 
 # Make python3 standard
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 10
@@ -216,12 +217,14 @@ RUN ansible-playbook /ansible/proftpd_provision.yml \
     --extra-vars proftpd_sql_password=$GALAXY_USER \
     --extra-vars galaxy_ftp_upload_dir=$EXPORT_DIR/ftp
 
+# Install cvmfs
+RUN ansible-playbook /ansible/cvmfs_provision.yml
+
 RUN mkdir -p /shed_tools \
     && chown $GALAXY_USER:$GALAXY_USER /shed_tools \
     && ln -s /tool_deps/ $EXPORT_DIR/tool_deps \
     # Configure Galaxy to use the Tool Shed
     && chown $GALAXY_USER:$GALAXY_USER $EXPORT_DIR/tool_deps \
-    && apt update -qq && apt install --no-install-recommends -y g++ make \
     && ansible-playbook /ansible/provision.yml \
     --extra-vars galaxy_venv_dir=$GALAXY_VIRTUAL_ENV \
     --extra-vars galaxy_log_dir=$GALAXY_LOGS_DIR \
@@ -247,7 +250,7 @@ RUN mkdir -p /shed_tools \
     --extra-vars tus_upload_store_path=$GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars gx_it_proxy_sessions_path=$GALAXY_CONFIG_INTERACTIVETOOLS_MAP \
     --extra-vars use_pbkdf2=True \
-    --tags=galaxyextras,cvmfs --skip-tags=tusd,flower,redis,slurm,condor,proftpd -c local \
+    --tags=galaxyextras --skip-tags=tusd,flower,redis,slurm,condor,proftpd,cvmfs -c local \
     && . $GALAXY_VIRTUAL_ENV/bin/activate \
     && pip install WeasyPrint \
     && deactivate \
@@ -255,7 +258,7 @@ RUN mkdir -p /shed_tools \
     && cd $GALAXY_ROOT_DIR && ./scripts/common_startup.sh \
     && cd config && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + \
     && find . -name '.cache' -type d -prune -exec rm -rf '{}' + \
-    && apt purge software-properties-common dirmngr gpg gpg-agent g++ make gcc -y && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ~/.cache/ \
+    && apt purge software-properties-common dirmngr gpg gpg-agent -y && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ~/.cache/ \
     # cleanup dance
     && find $GALAXY_ROOT_DIR/ -name '*.pyc' -delete | true \
     && find /usr/lib/ -name '*.pyc' -delete | true \

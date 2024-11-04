@@ -34,3 +34,7 @@
 [submodule "galaxy/ansible/roles/galaxy-proftpd"]
 	path = galaxy/ansible/roles/galaxy-proftpd
 	url = https://github.com/galaxyproject/ansible-proftpd
+
+[submodule "galaxy/ansible/roles/galaxy-rabbitmq"]
+	path = galaxy/ansible/roles/galaxy-rabbitmq
+	url = https://github.com/geerlingguy/ansible-role-rabbitmq

@@ -921,7 +921,7 @@ The Galaxy Report and Flower Webapps are `htpasswd` protected with username and 
 RabbitMQ is configured with:
   - Admin username: `admin`
   - Admin password: `admin`
-  - Galaxy vhost: `galaxy_internal`
+  - Galaxy vhost: `galaxy`
   - Galaxy username: `galaxy`
   - Galaxy password: `galaxy`
   - Flower username: `flower`

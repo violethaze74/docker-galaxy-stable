@@ -37,3 +37,13 @@ cvmfs_keys:
       mAG1ceyBFowj/r3iJTa+Jcif2uAmZxg+cHkZG5KzATykF82UH1ojUzREMMDcPJi2
       dQIDAQAB
       -----END PUBLIC KEY-----
+
+rabbitmq_port: "5672"
+rabbitmq_management_port: "15672"
+rabbitmq_admin_username: admin
+rabbitmq_admin_password: admin
+rabbitmq_galaxy_vhost: galaxy
+rabbitmq_galaxy_username: galaxy
+rabbitmq_galaxy_password: galaxy
+rabbitmq_flower_username: flower
+rabbitmq_flower_password: flower

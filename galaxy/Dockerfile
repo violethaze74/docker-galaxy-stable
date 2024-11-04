@@ -99,7 +99,6 @@ RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
     && apt-get install nano --no-install-recommends -y \
     && apt-get install git --no-install-recommends -y \
     && apt-get install gridengine-common gridengine-drmaa1.0 --no-install-recommends -y \
-    && apt-get install rabbitmq-server --no-install-recommends -y \
     && apt-get install --no-install-recommends -y libswitch-perl supervisor \
     && apt-get purge -y software-properties-common gpg-agent systemd \
     && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && rm -rf ~/.cache/ \
@@ -220,6 +219,9 @@ RUN ansible-playbook /ansible/proftpd_provision.yml \
 # Install cvmfs
 RUN ansible-playbook /ansible/cvmfs_provision.yml
 
+# Install rabbitmq
+RUN ansible-playbook /ansible/rabbitmq_provision.yml
+
 RUN mkdir -p /shed_tools \
     && chown $GALAXY_USER:$GALAXY_USER /shed_tools \
     && ln -s /tool_deps/ $EXPORT_DIR/tool_deps \
@@ -250,7 +252,7 @@ RUN mkdir -p /shed_tools \
     --extra-vars tus_upload_store_path=$GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars gx_it_proxy_sessions_path=$GALAXY_CONFIG_INTERACTIVETOOLS_MAP \
     --extra-vars use_pbkdf2=True \
-    --tags=galaxyextras --skip-tags=tusd,flower,redis,slurm,condor,proftpd,cvmfs -c local \
+    --tags=galaxyextras --skip-tags=tusd,flower,redis,slurm,condor,proftpd,cvmfs,rabbitmq -c local \
     && . $GALAXY_VIRTUAL_ENV/bin/activate \
     && pip install WeasyPrint \
     && deactivate \

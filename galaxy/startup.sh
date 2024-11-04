@@ -471,7 +471,7 @@ function start_gravity {
     if [[ $NONUSE != *"rabbitmq"* ]]
     then
         # Set AMQP internal connection for Galaxy
-        export GALAXY_CONFIG_AMQP_INTERNAL_CONNECTION="pyamqp://galaxy:galaxy@localhost:5672/galaxy_internal"
+        export GALAXY_CONFIG_AMQP_INTERNAL_CONNECTION="pyamqp://galaxy:galaxy@localhost:5672/galaxy"
     fi
 
     # Start galaxy services using gravity

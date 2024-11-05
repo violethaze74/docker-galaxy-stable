@@ -329,7 +329,7 @@ function start_supervisor {
     if [[ ! -z $GALAXY_AUTO_UPDATE_DB ]]
     then
         echo "Updating Galaxy database"
-        sh manage_db.sh -c /etc/galaxy/galaxy.yml upgrade
+        sh manage_db.sh -c $GALAXY_CONFIG_FILE upgrade
     fi
 
     if [[ ! -z $SUPERVISOR_MANAGE_CRON ]]; then
@@ -484,7 +484,7 @@ fi
 
 if $PRIVILEGED; then
     # in privileged mode autofs and CVMFS is available
-    export GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH="/etc/galaxy/tool_data_table_conf.xml,/cvmfs/data.galaxyproject.org/byhand/location/tool_data_table_conf.xml,/cvmfs/data.galaxyproject.org/managed/location/tool_data_table_conf.xml"
+    export GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH="$GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH,/cvmfs/data.galaxyproject.org/byhand/location/tool_data_table_conf.xml,/cvmfs/data.galaxyproject.org/managed/location/tool_data_table_conf.xml"
 
     echo "Enable Galaxy Interactive Tools."
     export GALAXY_CONFIG_INTERACTIVETOOLS_ENABLE=True

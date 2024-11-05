@@ -88,19 +88,11 @@ RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/02apt-speedup \
 # Create the postgres user before apt-get does (with the configured UID/GID) to facilitate sharing $EXPORT_DIR/postgresql with non-Linux hosts
 RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
     && adduser --system --quiet --home /var/lib/postgresql --no-create-home --shell /bin/bash --gecos "" --uid $GALAXY_POSTGRES_UID --gid $GALAXY_POSTGRES_GID postgres \
-    && apt-get -qq update && apt-get install --no-install-recommends -y software-properties-common gpg-agent curl sudo \
-    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - \
-    && add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-    && apt-get update -qq \
-    && apt-get install nginx-extras nginx-common --no-install-recommends -y \
-    && apt-get install docker-ce --no-install-recommends -y \
-    && apt-get install --no-install-recommends -y nano git gridengine-common gridengine-drmaa1.0 libswitch-perl \
-    && apt-get purge -y software-properties-common gpg-agent \
-    && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && rm -rf ~/.cache/ \
     && groupadd -r $GALAXY_USER -g $GALAXY_GID \
     && useradd -u $GALAXY_UID -r -g $GALAXY_USER -d $GALAXY_HOME -c "Galaxy user" --shell /bin/bash $GALAXY_USER \
-    && usermod -aG docker $GALAXY_USER \
     && mkdir $EXPORT_DIR $GALAXY_HOME $GALAXY_LOGS_DIR && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_HOME $EXPORT_DIR $GALAXY_LOGS_DIR \
+    && apt-get -qq update && apt-get install --no-install-recommends -y curl sudo ca-certificates nano git gridengine-common gridengine-drmaa1.0 libswitch-perl \
+    && apt-get install nginx-extras nginx-common --no-install-recommends -y \
     # cleanup dance
     && find /usr/lib/ -name '*.pyc' -delete \
     && rm -rf /tmp/* /root/.cache/ /var/cache/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm/
@@ -158,16 +150,18 @@ RUN curl -o $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH \
     && chown $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH \
     && chmod 0644 $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH
 
-# Make python3 standard
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 10
-
 ADD ansible/ /ansible/
 
 # Install ansible and related dependencies
 RUN apt update -qq && apt install --no-install-recommends -y software-properties-common dirmngr gpg gpg-agent bsdmainutils \
     && sudo add-apt-repository ppa:ansible/ansible-7 \
+    # Make python3 standard
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3 10 \
     && apt install --no-install-recommends -y ansible \
     && apt purge -y systemd && apt-get autoremove -y && apt-get clean
+
+# Install ansible roles
+RUN ansible-galaxy install -r /ansible/requirements.yml -p /ansible/roles
 
 # to be removed after adding nginx role
 RUN ansible-playbook /ansible/nginx.yml \

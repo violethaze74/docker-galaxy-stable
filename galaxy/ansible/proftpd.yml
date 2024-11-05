@@ -65,4 +65,4 @@
         creates: "{{ base_ssh_host_keys_dir }}/dsa"
 
   roles:
-      - role: galaxy-proftpd
+    - role: galaxyproject.proftpd

@@ -63,6 +63,10 @@
   when: galaxy_tusd | bool
   tags: galaxy_tusd
 
+- import_playbook: docker.yml
+  when: galaxy_docker | bool
+  tags: galaxy_docker
+
 - import_playbook: supervisor.yml
   when: galaxy_supervisor | bool
   tags: galaxy_supervisor

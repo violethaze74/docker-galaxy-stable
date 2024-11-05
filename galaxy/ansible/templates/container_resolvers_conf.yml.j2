@@ -1,31 +1,14 @@
-{% if container_resolution_explicit_singularity %}
-- type: explicit_singularity
+{% if container_resolution_explicit %}
+- type: explicit
 {% endif %}
-{% if container_resolution_cached_explicit_singularity %}
-- type: cached_explicit_singularity
+{% if container_resolution_cached_mulled %}
+- type: cached_mulled
 {% endif %}
-{% if container_resolution_cached_mulled_singularity %}
-- type: cached_mulled_singularity
+{% if container_resolution_mulled %}
+- type: mulled
+  namespace: "{{ container_resolution_mulled_namespace }}"
 {% endif %}
-{% if container_resolution_mulled_singularity %}
-- type: mulled_singularity
-  auto_install: False
-  namespace: "{{ container_resolution_mulled_singularity_namespace }}"
+{% if container_resolution_build_mulled %}
+- type: build_mulled
+  namespace: local
 {% endif %}
-{% if container_resolution_build_mulled_singularity %}
-- type: build_mulled_singularity
-  auto_install: False
-{% endif %}
-
-
-
-
-
-
-
-
-
-
-
-
-

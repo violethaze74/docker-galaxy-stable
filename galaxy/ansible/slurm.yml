@@ -11,8 +11,8 @@
       StateSaveLocation: /tmp/slurm
       ReturnToService: 1
   roles:
-      - role: galaxy-repos
-      - role: galaxy-slurm
+    - role: galaxyproject.repos
+    - role: galaxyproject.slurm
   tasks:
     - name: Install slurm-drmaa package
       package:

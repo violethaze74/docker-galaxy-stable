@@ -2,7 +2,7 @@
   connection: local
   remote_user: root
   roles:
-      - role: galaxy-redis
+    - role: geerlingguy.redis
   tasks:
     - name: Set daemonize as no in redis config
       lineinfile:

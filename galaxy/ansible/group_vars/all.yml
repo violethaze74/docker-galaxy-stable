@@ -30,6 +30,7 @@ galaxy_tusd: true
 galaxy_cvmfs_client: true
 galaxy_job_conf: true
 galaxy_gravity: true
+galaxy_docker: true
 
 galaxy_db_port: "5432"
 galaxy_database_connection: "postgres://{{ galaxy_user_name }}@localhost:{{ galaxy_db_port }}/galaxy"
@@ -99,12 +100,11 @@ galaxy_singularity_volumes_from: ""
 galaxy_singularity_volumes : "$defaults"
 
 galaxy_container_resolution: false
-container_resolution_explicit_singularity: true
-container_resolution_cached_explicit_singularity: true
-container_resolution_mulled_singularity: true
-container_resolution_cached_mulled_singularity: "{{ container_resolution_mulled_singularity }}"
-container_resolution_build_mulled_singularity: "{{ container_resolution_mulled_singularity }}"
-container_resolution_mulled_singularity_namespace: biocontainers
+container_resolution_explicit: true
+container_resolution_mulled: true
+container_resolution_cached_mulled: "{{ container_resolution_mulled }}"
+container_resolution_build_mulled: "{{ container_resolution_mulled }}"
+container_resolution_mulled_namespace: biocontainers
 
 # Gravity configuration.
 gravity_config_file: "{{ galaxy_config_dir }}/gravity.yml"

@@ -5,4 +5,4 @@
     tusd_version: v2.5.0
     tusd_systemd: false
   roles:
-      - role: galaxy-tusd
+    - role: galaxyproject.tusd

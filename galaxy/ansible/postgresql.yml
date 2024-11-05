@@ -12,4 +12,4 @@
     postgresql_pg_hba_conf:
       - host all all 0.0.0.0/0 md5
   roles:
-      - role: galaxy-postgresql
+    - role: galaxyproject.postgresql

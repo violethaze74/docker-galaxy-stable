@@ -3,38 +3,3 @@
 	url = https://github.com/jyotipm29/ansible-galaxy-extras
 	branch = 24.1
 
-[submodule "galaxy/ansible/roles/galaxy-postgresql"]
-	path = galaxy/ansible/roles/galaxy-postgresql
-	url = https://github.com/galaxyproject/ansible-postgresql
-
-[submodule "galaxy/ansible/roles/galaxy-tusd"]
-	path = galaxy/ansible/roles/galaxy-tusd
-	url = https://github.com/galaxyproject/ansible-role-tusd
-
-[submodule "galaxy/ansible/roles/galaxy-flower"]
-	path = galaxy/ansible/roles/galaxy-flower
-	url = https://github.com/usegalaxy-eu/flower-ansible-role
-
-[submodule "galaxy/ansible/roles/galaxy-redis"]
-	path = galaxy/ansible/roles/galaxy-redis
-	url = https://github.com/geerlingguy/ansible-role-redis
-
-[submodule "galaxy/ansible/roles/galaxy-repos"]
-	path = galaxy/ansible/roles/galaxy-repos
-	url = https://github.com/galaxyproject/ansible-repos
-
-[submodule "galaxy/ansible/roles/galaxy-slurm"]
-	path = galaxy/ansible/roles/galaxy-slurm
-	url = https://github.com/galaxyproject/ansible-slurm
-
-[submodule "galaxy/ansible/roles/galaxy-htcondor"]
-	path = galaxy/ansible/roles/galaxy-htcondor
-	url = https://github.com/usegalaxy-eu/ansible-htcondor-grycap
-
-[submodule "galaxy/ansible/roles/galaxy-proftpd"]
-	path = galaxy/ansible/roles/galaxy-proftpd
-	url = https://github.com/galaxyproject/ansible-proftpd
-
-[submodule "galaxy/ansible/roles/galaxy-rabbitmq"]
-	path = galaxy/ansible/roles/galaxy-rabbitmq
-	url = https://github.com/geerlingguy/ansible-role-rabbitmq

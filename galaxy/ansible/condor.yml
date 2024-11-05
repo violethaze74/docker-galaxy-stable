@@ -45,7 +45,7 @@
       command: update-rc.d condor defaults
 
   roles:
-    - role: galaxy-htcondor
+    - role: grycap.htcondor
 
   tasks:
     - name: Create log files for HTCondor

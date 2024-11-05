@@ -7,7 +7,7 @@
     flower_conf_dir: "{{ flower_conf_path | dirname }}"
     flower_ui_users: []
   roles:
-    - role: galaxy-flower
+    - role: usegalaxy_eu.flower
   tasks:
     - name: Add url prefix to flower config
       lineinfile:

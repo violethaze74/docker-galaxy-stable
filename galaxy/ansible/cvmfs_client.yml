@@ -3,8 +3,6 @@
 - hosts: localhost
   connection: local
   remote_user: root
-  vars_files:
-    - vars/main.yml
   tasks:
     - name: Install CernVM apt key
       apt_key:
@@ -20,7 +18,7 @@
     - name: Install CernVM-FS client (apt)
       apt:
         name: ['cvmfs', 'cvmfs-config']
-        state: present
+        state: "{{ galaxy_apt_package_state }}"
         update_cache: yes
 
     - name: Make CernVM-FS key directories

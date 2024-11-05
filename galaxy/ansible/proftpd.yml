@@ -17,19 +17,18 @@
       - User: "{{ galaxy_user_name }}"
       - Group: "{{ galaxy_user_name }}"
     proftpd_global_options:
-      - PassivePorts: 30000 40000
-    proftpd_display_connect: |
-      Public Galaxy FTP
+      - PassivePorts: "{{ proftpd_passive_port_low }} {{ proftpd_passive_port_high }}"
+    proftpd_display_connect: "{{ proftpd_welcome }}"
     base_ssh_host_keys_dir: /etc/proftpd/ssh_host_keys
     proftpd_virtualhosts:
       - id: sftp
         address: 0.0.0.0
         options:
-          - Port: 22
+          - Port: "{{ proftpd_sftp_port}}"
           - SFTPEngine: on
           - SFTPPAMEngine: off
           - CreateHome: on dirmode 700
-          - SFTPHostKey: "{{ base_ssh_host_keys_dir}}/rsa"
+          - SFTPHostKey: "{{ base_ssh_host_keys_dir }}/rsa"
           - SFTPHostKey: "{{ base_ssh_host_keys_dir }}/dsa"
           - SFTPCompression: delayed
           - SQLEngine: on

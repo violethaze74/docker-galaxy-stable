@@ -26,7 +26,7 @@ ENV GALAXY_RELEASE=${GALAXY_RELEASE:-release_24.1} \
 
 ENV GALAXY_CONFIG_FILE=$GALAXY_CONFIG_DIR/galaxy.yml \
     GALAXY_CONFIG_JOB_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_conf.xml \
-    GALAXY_CONFIG_JOB_METRICS_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_metrics_conf.xml \
+    GALAXY_CONFIG_JOB_METRICS_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_metrics_conf.yml \
     GALAXY_CONFIG_TOOL_CONFIG_FILE=$GALAXY_CONFIG_DIR/tool_conf.xml \
     GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH=$GALAXY_CONFIG_DIR/tool_data_table_conf.xml \
     GALAXY_CONFIG_WATCH_TOOL_DATA_DIR=True \
@@ -92,19 +92,11 @@ RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - \
     && add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
     && apt-get update -qq \
-    ## && apt-get purge -y software-properties-common gpg-agent \
-    ## && apt-get install postgresql-10 --no-install-recommends -y \
     && apt-get install nginx-extras nginx-common --no-install-recommends -y \
     && apt-get install docker-ce --no-install-recommends -y \
-    && apt-get install nano --no-install-recommends -y \
-    && apt-get install git --no-install-recommends -y \
-    && apt-get install gridengine-common gridengine-drmaa1.0 --no-install-recommends -y \
-    && apt-get install --no-install-recommends -y libswitch-perl supervisor \
-    && apt-get purge -y software-properties-common gpg-agent systemd \
+    && apt-get install --no-install-recommends -y nano git gridengine-common gridengine-drmaa1.0 libswitch-perl \
+    && apt-get purge -y software-properties-common gpg-agent \
     && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && rm -rf ~/.cache/ \
-    && mkdir -p /etc/supervisor/conf.d/ /var/log/supervisor/ \
-    # we will recreate this later
-    ## && rm -rf $PG_DATA_DIR_DEFAULT \
     && groupadd -r $GALAXY_USER -g $GALAXY_GID \
     && useradd -u $GALAXY_UID -r -g $GALAXY_USER -d $GALAXY_HOME -c "Galaxy user" --shell /bin/bash $GALAXY_USER \
     && usermod -aG docker $GALAXY_USER \
@@ -177,17 +169,14 @@ RUN apt update -qq && apt install --no-install-recommends -y software-properties
     && apt install --no-install-recommends -y ansible \
     && apt purge -y systemd && apt-get autoremove -y && apt-get clean
 
-# Install postgresql
-RUN ansible-playbook /ansible/postgresql_provision.yml
+# to be removed after adding nginx role
+RUN ansible-playbook /ansible/nginx.yml \
+    --extra-vars nginx_use_remote_header=True \
+    --tags=nginx,proxy_prefix -c local
 
-# Install tusd
-RUN ansible-playbook /ansible/tusd_provision.yml \
-    && mkdir -p $GALAXY_CONFIG_TUS_UPLOAD_STORE \
-    && chown $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_TUS_UPLOAD_STORE
-
-# Install flower
+# Install flower separately as systemd tasks (tagged with 'service') have to be skipped
 RUN export PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH \
-    && ansible-playbook /ansible/flower_provision.yml --skip-tags service \
+    && ansible-playbook /ansible/flower.yml --skip-tags service \
     --extra-vars flower_venv_dir=$GALAXY_VIRTUAL_ENV \
     --extra-vars flower_db_file=$GALAXY_ROOT_DIR/database/flower.db \
     --extra-vars flower_user=$GALAXY_USER \
@@ -195,68 +184,36 @@ RUN export PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH \
     --extra-vars flower_venv_user=$GALAXY_USER \
     --extra-vars flower_venv_group=$GALAXY_USER
 
-# Install redis
-RUN ansible-playbook /ansible/redis_provision.yml \
-    --extra-vars redis_venv_dir=$GALAXY_VIRTUAL_ENV \
-    --extra-vars redis_user=$GALAXY_USER
-
-# Install slurm
-RUN ansible-playbook /ansible/slurm_provision.yml \
-    --extra-vars galaxy_user_name=$GALAXY_USER
-
-# Install htcondor
-RUN ansible-playbook /ansible/htcondor_provision.yml \
-    --extra-vars galaxy_user_name=$GALAXY_USER
-
-# Install proftpd
-RUN ansible-playbook /ansible/proftpd_provision.yml \
-    --extra-vars galaxy_user_name=$GALAXY_USER \
-    --extra-vars proftpd_sql_db=galaxy@galaxy \
-    --extra-vars proftpd_sql_user=$GALAXY_USER \
-    --extra-vars proftpd_sql_password=$GALAXY_USER \
-    --extra-vars galaxy_ftp_upload_dir=$EXPORT_DIR/ftp
-
-# Install cvmfs
-RUN ansible-playbook /ansible/cvmfs_provision.yml
-
-# Install rabbitmq
-RUN ansible-playbook /ansible/rabbitmq_provision.yml
-
-RUN mkdir -p /shed_tools \
-    && chown $GALAXY_USER:$GALAXY_USER /shed_tools \
+RUN mkdir -p /shed_tools $GALAXY_CONFIG_TUS_UPLOAD_STORE \
+    && chown $GALAXY_USER:$GALAXY_USER /shed_tools $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     && ln -s /tool_deps/ $EXPORT_DIR/tool_deps \
     # Configure Galaxy to use the Tool Shed
     && chown $GALAXY_USER:$GALAXY_USER $EXPORT_DIR/tool_deps \
     && ansible-playbook /ansible/provision.yml \
+    --extra-vars galaxy_server_dir=$GALAXY_ROOT_DIR \
     --extra-vars galaxy_venv_dir=$GALAXY_VIRTUAL_ENV \
-    --extra-vars galaxy_log_dir=$GALAXY_LOGS_DIR \
+    --extra-vars galaxy_logs_dir=$GALAXY_LOGS_DIR \
     --extra-vars galaxy_user_name=$GALAXY_USER \
     --extra-vars galaxy_config_file=$GALAXY_CONFIG_FILE \
     --extra-vars galaxy_config_dir=$GALAXY_CONFIG_DIR \
     --extra-vars gravity_config_file=$GRAVITY_CONFIG_FILE \
     --extra-vars galaxy_job_conf_path=$GALAXY_CONFIG_JOB_CONFIG_FILE \
     --extra-vars galaxy_job_metrics_conf_path=$GALAXY_CONFIG_JOB_METRICS_CONFIG_FILE \
-    --extra-vars supervisor_manage_slurm="" \
-    --extra-vars galaxy_extras_config_condor=True \
-    --extra-vars galaxy_extras_config_condor_docker=True \
-    --extra-vars galaxy_extras_config_rabbitmq=True \
-    --extra-vars galaxy_extras_config_redis=True \
-    --extra-vars galaxy_extras_config_flower=True \
-    --extra-vars galaxy_extras_config_tusd=True \
-    --extra-vars galaxy_extras_config_cvmfs=True \
-    --extra-vars galaxy_extras_config_gravity=True \
-    --extra-vars galaxy_extras_docker_legacy=False \
+    --extra-vars postgresql_version=$PG_VERSION \
     --extra-vars supervisor_postgres_config_path=$PG_CONF_DIR_DEFAULT/postgresql.conf \
-    --extra-vars supervisor_postgres_autostart=false \
-    --extra-vars nginx_use_remote_header=True \
+    --extra-vars redis_venv_dir=$GALAXY_VIRTUAL_ENV \
+    --extra-vars redis_venv_user=$GALAXY_USER \
+    --extra-vars galaxy_user_name=$GALAXY_USER \
+    --extra-vars proftpd_sql_db=galaxy@galaxy \
+    --extra-vars proftpd_sql_user=$GALAXY_USER \
+    --extra-vars proftpd_sql_password=$GALAXY_USER \
+    --extra-vars galaxy_ftp_upload_dir=$EXPORT_DIR/ftp \
     --extra-vars tus_upload_store_path=$GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars gx_it_proxy_sessions_path=$GALAXY_CONFIG_INTERACTIVETOOLS_MAP \
-    --extra-vars use_pbkdf2=True \
-    --tags=galaxyextras --skip-tags=tusd,flower,redis,slurm,condor,proftpd,cvmfs,rabbitmq -c local \
     && . $GALAXY_VIRTUAL_ENV/bin/activate \
     && pip install WeasyPrint \
     && deactivate \
-    # TODO: no clue why this is needed here again
+    # this is needed here again to install any conditional dependencies
     && cd $GALAXY_ROOT_DIR && ./scripts/common_startup.sh \
     && cd config && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + \
     && find . -name '.cache' -type d -prune -exec rm -rf '{}' + \
@@ -267,6 +224,7 @@ RUN mkdir -p /shed_tools \
     && find /var/log/ -name '*.log' -delete | true \
     && find $GALAXY_VIRTUAL_ENV -name '*.pyc' -delete | true \
     && rm -rf /tmp/* /root/.cache/ /var/cache/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm
+
 
 # Include all needed scripts from the host
 ADD ./setup_postgresql.py /usr/local/bin/setup_postgresql.py
@@ -372,7 +330,7 @@ EXPOSE 9002
 VOLUME ["/export/", "/data/", "/var/lib/docker"]
 
 ADD startup.sh /usr/bin/startup
-ENV SUPERVISOR_POSTGRES_AUTOSTART=True \
+ENV SUPERVISOR_POSTGRES_AUTOSTART=False \
     SUPERVISOR_MANAGE_POSTGRES=True \
     SUPERVISOR_MANAGE_CRON=True \
     SUPERVISOR_MANAGE_PROFTP=True \
@@ -386,7 +344,6 @@ ENV SUPERVISOR_POSTGRES_AUTOSTART=True \
     GRAVITY_MANAGE_TUSD=True \
     GRAVITY_MANAGE_REPORTS=True \
     HOST_DOCKER_LEGACY= \
-    GALAXY_EXTRAS_CONFIG_POSTGRES=True \
     STARTUP_EXPORT_USER_FILES=True
 
 ENTRYPOINT ["/sbin/tini", "--"]

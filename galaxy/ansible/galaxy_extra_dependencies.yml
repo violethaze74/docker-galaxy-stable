@@ -1,0 +1,32 @@
+- hosts: localhost
+  connection: local
+  remote_user: root
+  tasks:
+    - name: "Install most of the conditional dependencies"
+      # https://github.com/galaxyproject/galaxy/blob/dev/lib/galaxy/dependencies/conditional-requirements.txt
+      pip:
+        name: "{{item}}"
+        virtualenv: "{{ galaxy_venv_dir }}"
+        virtualenv_command: "{{ pip_virtualenv_command | default( 'virtualenv' ) }}"
+        extra_args: --index-url https://wheels.galaxyproject.org/simple --extra-index-url https://pypi.python.org/simple
+      become: True
+      become_user: "{{ galaxy_user_name }}"
+      with_items:
+        - "psycopg2-binary==2.9.9"
+        - "mysqlclient"
+        - "fluent-logger"
+        - "sentry-sdk[fastapi]"
+        - "pbs_python"
+        - "drmaa"
+        - "statsd"
+        - "azure-storage-blob==12.19.1"
+        - "python-irodsclient==2.0.0"
+        - "python-ldap==3.4.0"
+        - "ldap3==2.9.1"
+        - "python-pam"
+        - "galaxycloudrunner"
+        - "pkce"
+        - "total-perspective-vortex>=2.3.2,<3"
+        - "pykube-ng==21.3.0"
+        - "kamaki"
+        - "boto3"

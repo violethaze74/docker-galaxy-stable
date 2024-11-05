@@ -65,7 +65,7 @@ then
         ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX="--extra-vars nginx_prefix_location=$PROXY_PREFIX"
         ANSIBLE_TAG_HTTPS_PROXY_PREFIX="proxy_prefix"
     else
-        ansible-playbook -c local /ansible/provision.yml \
+        ansible-playbook -c local /ansible/nginx.yml \
         --extra-vars nginx_prefix_location="$PROXY_PREFIX" \
         --tags proxy_prefix
     fi
@@ -74,7 +74,7 @@ fi
 if [ "$USE_HTTPS_LETSENCRYPT" != "False" ]
 then
     echo "Settting up letsencrypt"
-    ansible-playbook -c local /ansible/provision.yml \
+    ansible-playbook -c local /ansible/nginx.yml \
     --extra-vars galaxy_extras_config_ssl=True \
     --extra-vars galaxy_extras_config_ssl_method=letsencrypt \
     --extra-vars galaxy_extras_galaxy_domain="$GALAXY_DOMAIN" \
@@ -86,7 +86,7 @@ then
     if [ -f /export/server.key -a -f /export/server.crt ]
     then
         echo "Copying SSL keys"
-        ansible-playbook -c local /ansible/provision.yml \
+        ansible-playbook -c local /ansible/nginx.yml \
         --extra-vars galaxy_extras_config_ssl=True \
         --extra-vars galaxy_extras_config_ssl_method=own \
         --extra-vars src_nginx_ssl_certificate_key=/export/server.key \
@@ -95,7 +95,7 @@ then
         --tags https,$ANSIBLE_TAG_HTTPS_PROXY_PREFIX
     else
         echo "Setting up self-signed SSL keys"
-        ansible-playbook -c local /ansible/provision.yml \
+        ansible-playbook -c local /ansible/nginx.yml \
         --extra-vars galaxy_extras_config_ssl=True \
         --extra-vars galaxy_extras_config_ssl_method=self-signed \
         $ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX \
@@ -219,8 +219,7 @@ if [[ ! -z $GALAXY_CONFIG_CONDA_AUTO_INSTALL ]]
         fi
 fi
 
-if [[ ! -z $GALAXY_EXTRAS_CONFIG_POSTGRES ]]; then
-    if [[ $NONUSE != *"postgres"* ]]
+if [[ $NONUSE != *"postgres"* ]]
     then
         # Backward compatibility for exported postgresql directories before version 15.08.
         # In previous versions postgres has the UID/GID of 102/106. We changed this in
@@ -233,12 +232,10 @@ if [[ ! -z $GALAXY_EXTRAS_CONFIG_POSTGRES ]]; then
                         chown -R postgres:postgres /export/postgresql/
                 fi
         fi
-    fi
 fi
 
 
-if [[ ! -z $GALAXY_EXTRAS_CONFIG_CONDOR ]]; then
-    if [[ ! -z $ENABLE_CONDOR ]]
+if [[ ! -z $ENABLE_CONDOR ]]
     then
         if [[ ! -z $CONDOR_HOST ]]
         then
@@ -263,7 +260,6 @@ TRUST_UID_DOMAIN = true" > /etc/condor/condor_config.local
             rm -f /etc/condor/condor_config
             ln -s /export/condor_config /etc/condor/condor_config
         fi
-    fi
 fi
 
 
@@ -499,7 +495,7 @@ if $PRIVILEGED; then
         sed -i "s/\(\.interactivetool\.\)[^;]*/\1$GALAXY_DOMAIN/g" /etc/nginx/conf.d/interactive_tools.conf
     fi
 
-    if [ x$DOCKER_PARENT == "x" ]; then
+    if [[ ! -z $DOCKER_PARENT ]]; then
         #build the docker in docker environment
         bash /root/cgroupfs_mount.sh
         start_gravity
@@ -517,10 +513,10 @@ if $PRIVILEGED; then
         echo "About to pull IT images. Depending on the size, this may take a while!"
 
         for it in {JUPYTER,RSTUDIO,ETHERCALC,PHINCH,NEO}; do
-            enabled_var_name="GALAXY_EXTRAS_IT_FETCH_${it}";
+            enabled_var_name="GALAXY_IT_FETCH_${it}";
             if [[ ${!enabled_var_name} ]]; then
                 # Store name in a var
-                image_var_name="GALAXY_EXTRAS_IT_${it}_IMAGE"
+                image_var_name="GALAXY_IT_${it}_IMAGE"
                 # And then read from that var
                 docker pull "${!image_var_name}"
             fi

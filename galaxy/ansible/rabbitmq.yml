@@ -1,8 +1,6 @@
 - hosts: localhost
   connection: local
   remote_user: root
-  vars_files:
-    - vars/main.yml
   vars:
     rabbitmq_version: 4.0.3
     rabbitmq_apt_repository: "deb [signed-by=/etc/apt/trusted.gpg.d/rabbitmq-9F4587F226208342.gpg] https://ppa1.rabbitmq.com/rabbitmq/rabbitmq-server/deb/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} main"

@@ -1,5 +1,0 @@
-[submodule "galaxy/ansible/roles/galaxyproject.galaxyextras"]
-	path = galaxy/ansible/roles/galaxyprojectdotorg.galaxyextras
-	url = https://github.com/jyotipm29/ansible-galaxy-extras
-	branch = 24.1
-

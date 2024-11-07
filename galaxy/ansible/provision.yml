@@ -7,10 +7,6 @@
   when: galaxy_job_metrics | bool
   tags: galaxy_job_metrics
 
-- import_playbook: galaxy_extra_dependencies.yml
-  when: galaxy_extra_dependencies | bool
-  tags: galaxy_extra_dependencies
-
 - import_playbook: gravity.yml
   when: galaxy_gravity | bool
   tags: galaxy_gravity
@@ -19,9 +15,9 @@
   when: galaxy_postgres | bool
   tags: galaxy_postgres
 
-# - import_playbook: nginx.yml
-#   when: galaxy_nginx | bool
-#   tags: galaxy_nginx
+- import_playbook: nginx.yml
+  when: galaxy_nginx | bool
+  tags: galaxy_nginx
 
 - import_playbook: proftpd.yml
   when: galaxy_proftpd | bool

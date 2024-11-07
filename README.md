@@ -14,7 +14,7 @@ One of the main goals is to make the access to entire tool suites as easy as pos
 this includes the setup of a public available web-service that needs to be maintained, or that the Tool-user needs to either setup a Galaxy Server by its own or to have Admin access to a local Galaxy server.
 With docker, tool developers can create their own Image with all dependencies and the user only needs to run it within docker.
 
-The Image is based on [Ubuntu 14.04 LTS](http://releases.ubuntu.com/14.04/) and all recommended Galaxy requirements are installed. The following chart should illustrate the [Docker](http://www.docker.io) image hierarchy we have build to make is as easy as possible to build on different layers of our stack and create many exciting Galaxy flavors.
+The Image is based on [Ubuntu 22.04 LTS](http://releases.ubuntu.com/22.04/) and all recommended Galaxy requirements are installed. The following chart should illustrate the [Docker](http://www.docker.io) image hierarchy we have build to make is as easy as possible to build on different layers of our stack and create many exciting Galaxy flavors.
 
 ![Docker hierarchy](https://raw.githubusercontent.com/bgruening/docker-galaxy-stable/master/chart.png)
 
@@ -757,7 +757,7 @@ Letsencrypt with the following environment variables:
 
 | Name   | Description   |
 |---|---|
-| `USE_HTTPS` | Set `USE_HTTPS=True` to set up HTTPS via self-signed certificates. If you have your own certificates, copy them to `/export/{server.key,server.crt}`. |
+| `USE_HTTPS` | Set `USE_HTTPS=True` to set up HTTPS via self-signed certificates (CN is set to the value of `GALAXY_DOMAIN` variable, defaulting to `localhost` if no value is provided). If you have your own certificates, copy them to `/export/{server.key,server.crt}`. |
 | `USE_HTTPS_LETSENCRYPT` | Set `USE_HTTPS_LETSENCRYPT=True` to automatically set up HTTPS using Letsencrypt as a certificate authority. (Requires you to also set `GALAXY_DOMAIN`) Note: only set one of `USE_HTTPS` and `USE_HTTPS_LETSENCRYPT` to true. |
 | `GALAXY_DOMAIN` | Set `GALAXY_DOMAIN=<your_domain>` so that Letsencrypt can test your that you own the domain you claim to own in order to issue you your HTTPS cert. |
 
@@ -930,18 +930,16 @@ RabbitMQ is configured with:
 
 # Development <a name="Development" /> [[toc]](#toc)
 
-This repository uses a git submodule to include [Ansible roles](https://github.com/galaxyproject/ansible-galaxy-extras) maintained by the Galaxy project.
-
-You can clone this repository and the Ansible submodule with:
+You can clone this repository with:
 
 ```sh
 git clone --recursive https://github.com/bgruening/docker-galaxy-stable.git
 ```
 
-Updating already existing submodules is possible with:
+This repository uses various [Ansible](http://www.ansible.com/) roles as specified in [requirements.yml](galaxy/ansible/requirements.yml) to manage configurations and dependencies. You can install these roles with the following command:
 
 ```sh
-git submodule update --init --recursive
+cd galaxy/ansible/ && ansible-galaxy install -r requirements.yml -p roles
 ```
 
 If you simply want to change the Galaxy repository and/or the Galaxy branch, from which the container is build you can do this with Docker `--build-arg` during the `docker build` step. For example you can use these parameters during container build:

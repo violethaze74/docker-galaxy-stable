@@ -31,7 +31,6 @@ python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.handl
 
 # Initialize variables for optional ansible parameters
 ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX=""
-ANSIBLE_TAG_HTTPS_PROXY_PREFIX=""
 
 # Configure proxy prefix filtering
 if [[ ! -z $PROXY_PREFIX ]]
@@ -63,43 +62,48 @@ then
     if [[ "$USE_HTTPS_LETSENCRYPT" != "False" || "$USE_HTTPS" != "False" ]]
     then
         ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX="--extra-vars nginx_prefix_location=$PROXY_PREFIX"
-        ANSIBLE_TAG_HTTPS_PROXY_PREFIX="proxy_prefix"
     else
         ansible-playbook -c local /ansible/nginx.yml \
-        --extra-vars nginx_prefix_location="$PROXY_PREFIX" \
-        --tags proxy_prefix
+        --extra-vars nginx_prefix_location="$PROXY_PREFIX"
     fi
 fi
 
 if [ "$USE_HTTPS_LETSENCRYPT" != "False" ]
 then
     echo "Settting up letsencrypt"
-    ansible-playbook -c local /ansible/nginx.yml \
-    --extra-vars galaxy_extras_config_ssl=True \
-    --extra-vars galaxy_extras_config_ssl_method=letsencrypt \
-    --extra-vars galaxy_extras_galaxy_domain="$GALAXY_DOMAIN" \
-    $ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX \
-    --tags https,$ANSIBLE_TAG_HTTPS_PROXY_PREFIX
+    PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH ansible-playbook -c local /ansible/nginx.yml \
+    --extra-vars '{"nginx_servers": ["galaxy_redirect_ssl", "interactive_tools_redirect_ssl"]}' \
+    --extra-vars '{"nginx_ssl_servers": ["galaxy_https", "interactive_tools_https"]}' \
+    --extra-vars nginx_ssl_role=usegalaxy_eu.certbot \
+    --extra-vars "{\"certbot_domains\": [\"$GALAXY_DOMAIN\"]}" \
+    --extra-vars nginx_conf_ssl_certificate_key=/etc/ssl/user/privkey-$GALAXY_USER.pem \
+    --extra-vars nginx_conf_ssl_certificate=/etc/ssl/certs/fullchain.pem \
+    $ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX
 fi
 if [ "$USE_HTTPS" != "False" ]
 then
     if [ -f /export/server.key -a -f /export/server.crt ]
     then
         echo "Copying SSL keys"
+        ssl_key_content=$(cat /export/server.key | sed 's/$/\\n/' | tr -d '\n')
         ansible-playbook -c local /ansible/nginx.yml \
-        --extra-vars galaxy_extras_config_ssl=True \
-        --extra-vars galaxy_extras_config_ssl_method=own \
-        --extra-vars src_nginx_ssl_certificate_key=/export/server.key \
-        --extra-vars src_nginx_ssl_certificate=/export/server.crt \
-        $ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX \
-        --tags https,$ANSIBLE_TAG_HTTPS_PROXY_PREFIX
+        --extra-vars '{"nginx_servers": ["galaxy_redirect_ssl", "interactive_tools_redirect_ssl"]}' \
+        --extra-vars '{"nginx_ssl_servers": ["galaxy_https", "interactive_tools_https"]}' \
+        --extra-vars nginx_ssl_src_dir=/export \
+        --extra-vars "{\"sslkeys\": {\"server.key\": \"$ssl_key_content\"}}" \
+        --extra-vars nginx_conf_ssl_certificate_key=/etc/ssl/private/server.key \
+        --extra-vars nginx_conf_ssl_certificate=/etc/ssl/certs/server.crt \
+        $ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX
     else
         echo "Setting up self-signed SSL keys"
         ansible-playbook -c local /ansible/nginx.yml \
-        --extra-vars galaxy_extras_config_ssl=True \
-        --extra-vars galaxy_extras_config_ssl_method=self-signed \
-        $ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX \
-        --tags https,$ANSIBLE_TAG_HTTPS_PROXY_PREFIX
+        --extra-vars '{"nginx_servers": ["galaxy_redirect_ssl", "interactive_tools_redirect_ssl"]}' \
+        --extra-vars '{"nginx_ssl_servers": ["galaxy_https", "interactive_tools_https"]}' \
+        --extra-vars nginx_ssl_role=galaxyproject.self_signed_certs \
+        --extra-vars nginx_conf_ssl_certificate_key=/etc/ssl/private/$GALAXY_DOMAIN.pem \
+        --extra-vars nginx_conf_ssl_certificate=/etc/ssl/certs/$GALAXY_DOMAIN.crt \
+        --extra-vars "{\"openssl_domains\": [\"$GALAXY_DOMAIN\"]}" \
+        $ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX
     fi
 fi
 
@@ -114,27 +118,19 @@ then
 fi
 
 # Disable authentication of Galaxy reports
-if [[ ! -z $DISABLE_REPORTS_AUTH ]]
-    then
-        # disable authentification
-        echo "Disable Galaxy reports authentification "
-        echo "" > /etc/nginx/conf.d/reports_auth.conf
-    else
-        # enable authentification
-        echo "Enable Galaxy reports authentification "
-        cp /etc/nginx/conf.d/reports_auth.conf.source /etc/nginx/conf.d/reports_auth.conf
+if [[ ! -z $DISABLE_REPORTS_AUTH ]]; then
+    # disable authentification
+    echo "Disable Galaxy reports authentification "
+    cp /etc/nginx/reports_auth.conf /etc/nginx/reports_auth.conf.source 
+    echo "# No authentication defined" > /etc/nginx/reports_auth.conf
 fi
 
 # Disable authentication of flower
-if [[ ! -z $DISABLE_FLOWER_AUTH ]]
-    then
-        # disable authentification
-        echo "Disable flower authentification "
-        echo "" > /etc/nginx/conf.d/flower_auth.conf
-    else
-        # enable authentification
-        echo "Enable flower authentification "
-        cp /etc/nginx/conf.d/flower_auth.conf.source /etc/nginx/conf.d/flower_auth.conf
+if [[ ! -z $DISABLE_FLOWER_AUTH ]]; then
+    # disable authentification
+    echo "Disable flower authentification "
+    cp /etc/nginx/flower_auth.conf /etc/nginx/flower_auth.conf.source
+    echo "# No authentication defined" > /etc/nginx/flower_auth.conf
 fi
 
 # Try to guess if we are running under --privileged mode
@@ -447,10 +443,9 @@ function start_gravity {
         then
             echo "Disabling Galaxy tusd app"
             python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.tusd.enable" "false" &> /dev/null
-            echo "" > /etc/nginx/conf.d/delegated_uploads.conf
+            cp /etc/nginx/delegated_uploads.conf /etc/nginx/delegated_uploads.conf.source 
+            echo "# No delegated uploads" > /etc/nginx/delegated_uploads.conf
         else
-            cp /etc/nginx/conf.d/delegated_uploads.conf.source /etc/nginx/conf.d/delegated_uploads.conf
-
             # TODO: Remove this after gravity config manager is updated to handle env vars properly
             ansible localhost -m replace -a "path=${GALAXY_CONFIG_FILE} regexp='^  #galaxy_infrastructure_url:.*' replace='  galaxy_infrastructure_url: ${GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL}'" &> /dev/null
         fi
@@ -492,10 +487,10 @@ if $PRIVILEGED; then
 
     # Update domain-based interactive tools nginx configuration with the galaxy domain if provided
     if [[ ! -z $GALAXY_DOMAIN ]]; then
-        sed -i "s/\(\.interactivetool\.\)[^;]*/\1$GALAXY_DOMAIN/g" /etc/nginx/conf.d/interactive_tools.conf
+        sed -i "s/\(\.interactivetool\.\)[^;]*/\1$GALAXY_DOMAIN/g" /etc/nginx/interactive_tools_common.conf
     fi
 
-    if [[ ! -z $DOCKER_PARENT ]]; then
+    if [[ -z $DOCKER_PARENT ]]; then
         #build the docker in docker environment
         bash /root/cgroupfs_mount.sh
         start_gravity

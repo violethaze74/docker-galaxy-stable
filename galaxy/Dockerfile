@@ -4,7 +4,7 @@
 
 FROM ubuntu:22.04
 
-MAINTAINER Björn A. Grüning, bjoern.gruening@gmail.com
+LABEL maintainer="Björn A. Grüning <bjoern.gruening@gmail.com>"
 
 # TODO
 #
@@ -92,7 +92,6 @@ RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
     && useradd -u $GALAXY_UID -r -g $GALAXY_USER -d $GALAXY_HOME -c "Galaxy user" --shell /bin/bash $GALAXY_USER \
     && mkdir $EXPORT_DIR $GALAXY_HOME $GALAXY_LOGS_DIR && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_HOME $EXPORT_DIR $GALAXY_LOGS_DIR \
     && apt-get -qq update && apt-get install --no-install-recommends -y curl sudo ca-certificates nano git gridengine-common gridengine-drmaa1.0 libswitch-perl \
-    && apt-get install nginx-extras nginx-common --no-install-recommends -y \
     # cleanup dance
     && find /usr/lib/ -name '*.pyc' -delete \
     && rm -rf /tmp/* /root/.cache/ /var/cache/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm/
@@ -155,18 +154,13 @@ ADD ansible/ /ansible/
 # Install ansible and related dependencies
 RUN apt update -qq && apt install --no-install-recommends -y software-properties-common dirmngr gpg gpg-agent bsdmainutils \
     && sudo add-apt-repository ppa:ansible/ansible-7 \
+    && apt install --no-install-recommends -y ansible \
     # Make python3 standard
     && update-alternatives --install /usr/bin/python python /usr/bin/python3 10 \
-    && apt install --no-install-recommends -y ansible \
     && apt purge -y systemd && apt-get autoremove -y && apt-get clean
 
 # Install ansible roles
 RUN ansible-galaxy install -r /ansible/requirements.yml -p /ansible/roles
-
-# to be removed after adding nginx role
-RUN ansible-playbook /ansible/nginx.yml \
-    --extra-vars nginx_use_remote_header=True \
-    --tags=nginx,proxy_prefix -c local
 
 # Install flower separately as systemd tasks (tagged with 'service') have to be skipped
 RUN export PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH \
@@ -205,12 +199,10 @@ RUN mkdir -p /shed_tools $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars tus_upload_store_path=$GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars gx_it_proxy_sessions_path=$GALAXY_CONFIG_INTERACTIVETOOLS_MAP \
     && . $GALAXY_VIRTUAL_ENV/bin/activate \
-    && pip install WeasyPrint \
+    && pip install weasyprint>=61.2 \
     && deactivate \
-    # this is needed here again to install any conditional dependencies
-    && cd $GALAXY_ROOT_DIR && ./scripts/common_startup.sh \
-    && cd config && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + \
-    && find . -name '.cache' -type d -prune -exec rm -rf '{}' + \
+    && find $GALAXY_ROOT_DIR/config -name 'node_modules' -type d -prune -exec rm -rf '{}' + \
+    && find $GALAXY_ROOT_DIR/config -name '.cache' -type d -prune -exec rm -rf '{}' + \
     && apt purge software-properties-common dirmngr gpg gpg-agent -y && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ~/.cache/ \
     # cleanup dance
     && find $GALAXY_ROOT_DIR/ -name '*.pyc' -delete | true \
@@ -338,7 +330,8 @@ ENV SUPERVISOR_POSTGRES_AUTOSTART=False \
     GRAVITY_MANAGE_TUSD=True \
     GRAVITY_MANAGE_REPORTS=True \
     HOST_DOCKER_LEGACY= \
-    STARTUP_EXPORT_USER_FILES=True
+    STARTUP_EXPORT_USER_FILES=True \
+    LOAD_GALAXY_CONDITIONAL_DEPENDENCIES=True
 
 ENTRYPOINT ["/sbin/tini", "--"]
 

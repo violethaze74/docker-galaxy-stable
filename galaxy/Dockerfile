@@ -176,12 +176,11 @@ RUN mkdir -p /shed_tools $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     && chown $GALAXY_USER:$GALAXY_USER /shed_tools $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     && ln -s /tool_deps/ $EXPORT_DIR/tool_deps \
     # Configure Galaxy to use the Tool Shed
-    && chown $GALAXY_USER:$GALAXY_USER $EXPORT_DIR/tool_deps \
+    && chown $GALAXY_USER:$GALAXY_USER $EXPORT_DIR/tool_deps $GALAXY_VIRTUAL_ENV -R \
     && ansible-playbook /ansible/provision.yml \
     --extra-vars galaxy_server_dir=$GALAXY_ROOT_DIR \
     --extra-vars galaxy_venv_dir=$GALAXY_VIRTUAL_ENV \
     --extra-vars galaxy_logs_dir=$GALAXY_LOGS_DIR \
-    --extra-vars galaxy_user_name=$GALAXY_USER \
     --extra-vars galaxy_config_file=$GALAXY_CONFIG_FILE \
     --extra-vars galaxy_config_dir=$GALAXY_CONFIG_DIR \
     --extra-vars gravity_config_file=$GRAVITY_CONFIG_FILE \

@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
 
-# Migration path for old images that had the tool_deps under /export/galaxy-central/tool_deps/
-
-if [ -d "/export/galaxy-central/tool_deps/" ] && [ ! -L "/export/galaxy-central/tool_deps/" ]; then
-    mkdir -p /export/tool_deps/
-    mv /export/galaxy-central/tool_deps /export/
-    ln -s /export/tool_deps/ $GALAXY_ROOT_DIR/
-fi
-
 # This is needed for Docker compose to have a unified alias for the main container.
 # Modifying /etc/hosts can only happen during runtime not during build-time
 echo "127.0.0.1      galaxy" >> /etc/hosts

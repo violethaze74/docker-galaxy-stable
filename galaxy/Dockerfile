@@ -1,6 +1,6 @@
 # Galaxy - Stable
 #
-# VERSION       Galaxy-central
+# VERSION       Galaxy in Docker
 
 # TODO
 #
@@ -11,7 +11,7 @@
 
 FROM buildpack-deps:22.04 AS build_base
 
-ENV GALAXY_ROOT_DIR=/galaxy-central \
+ENV GALAXY_ROOT_DIR=/galaxy \
     GALAXY_VIRTUAL_ENV=/galaxy_venv \
     GALAXY_HOME=/home/galaxy \
     GALAXY_CONDA_PREFIX=/tool_deps/_conda \
@@ -63,7 +63,7 @@ RUN mkdir $GALAXY_ROOT_DIR $GALAXY_VIRTUAL_ENV \
 
 FROM ubuntu:22.04 AS galaxy_cluster_base
 
-ENV GALAXY_ROOT_DIR=/galaxy-central \
+ENV GALAXY_ROOT_DIR=/galaxy \
     GALAXY_VIRTUAL_ENV=/galaxy_venv \
     GALAXY_LOGS_DIR=/home/galaxy/logs \
     GALAXY_CONFIG_DIR=/etc/galaxy \

@@ -20,6 +20,7 @@
       environment:
         PYTHOPATH: null
         VIRTUAL_ENV: "{{ galaxy_venv_dir }}"
+      become_user: "{{ galaxy_user_name }}"
 
     - name: "Set PBS/torque server name"
       lineinfile: dest=/etc/torque/server_name line={{ pbs_server_name }} state=present create=yes

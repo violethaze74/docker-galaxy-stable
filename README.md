@@ -251,7 +251,7 @@ With this method, you keep a backup in case you decide to downgrade, but require
 
   ```
   $ sudo rsync -var /data/galaxy-data-old/tool_deps/* /data/galaxy-data/tool_deps/
-  $ sudo rsync -var /data/galaxy-data-old/shed_tools/* /data/galaxy-data/shed_tools/
+  $ sudo rsync -var /data/galaxy-data-old/galaxy-central/database/shed_tools/* /data/galaxy-data/galaxy-central/database/shed_tools/
   ```
 10. Copy the welcome page and all its files.
 

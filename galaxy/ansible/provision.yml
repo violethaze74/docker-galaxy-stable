@@ -1,12 +1,4 @@
 ---
-- import_playbook: galaxy_root.yml
-  when: galaxy_root | bool
-  tags: galaxy_root
-
-- import_playbook: galaxy_job_metrics.yml
-  when: galaxy_job_metrics | bool
-  tags: galaxy_job_metrics
-
 - import_playbook: gravity.yml
   when: galaxy_gravity | bool
   tags: galaxy_gravity
@@ -74,3 +66,7 @@
 - import_playbook: galaxy_job_conf.yml
   when: galaxy_job_conf | bool
   tags: galaxy_job_conf
+
+- import_playbook: galaxy_job_metrics.yml
+  when: galaxy_job_metrics | bool
+  tags: galaxy_job_metrics

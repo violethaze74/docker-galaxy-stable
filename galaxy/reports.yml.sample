@@ -11,10 +11,10 @@ reports:
   #database_connection: postgresql://galaxy:galaxy@localhost:5432/galaxy?client_encoding=utf8
 
   # Where dataset files are stored.
-  #file_path: database/files
+  file_path: database/files
 
   # Where temporary files are stored.
-  #new_file_path: database/tmp
+  new_file_path: database/files
 
   # Mako templates are compiled as needed and cached for reuse, this
   # directory is used for the cache

@@ -37,7 +37,9 @@ if [[ ! -z $PROXY_PREFIX ]]
 then
     echo "Configuring with proxy prefix: $PROXY_PREFIX"
     export GALAXY_CONFIG_GALAXY_URL_PREFIX="$PROXY_PREFIX"
-    export GALAXY_CONFIG_INTERACTIVETOOLS_BASE_PATH="$PROXY_PREFIX"
+
+    # TODO: Set this using GALAXY_CONFIG_INTERACTIVETOOLS_BASE_PATH after gravity config manager is updated to handle env vars properly
+    ansible localhost -m replace -a "path=${GALAXY_CONFIG_FILE} regexp='^  #interactivetools_base_path:.*' replace='  interactivetools_base_path: ${PROXY_PREFIX}'" &> /dev/null
     
     python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.reports.url_prefix" "$PROXY_PREFIX/reports" &> /dev/null
     
@@ -177,19 +179,25 @@ fi
 if [[ ! -z $LOAD_GALAXY_CONDITIONAL_DEPENDENCIES ]]
     then
         echo "Installing optional dependencies in galaxy virtual environment..."
-        : ${GALAXY_WHEELS_INDEX_URL:="https://wheels.galaxyproject.org/simple"}
-        : ${PYPI_INDEX_URL:="https://pypi.python.org/simple"}
-        GALAXY_CONDITIONAL_DEPENDENCIES=$(PYTHONPATH=lib python -c "import galaxy.dependencies; print('\n'.join(galaxy.dependencies.optional('$GALAXY_CONFIG_FILE')))")
-        [ -z "$GALAXY_CONDITIONAL_DEPENDENCIES" ] || echo "$GALAXY_CONDITIONAL_DEPENDENCIES" | pip install -q -r /dev/stdin --index-url "${GALAXY_WHEELS_INDEX_URL}" --extra-index-url "${PYPI_INDEX_URL}"
+        sudo -E -u $GALAXY_USER bash -c '
+            . $GALAXY_VIRTUAL_ENV/bin/activate
+            : ${GALAXY_WHEELS_INDEX_URL:="https://wheels.galaxyproject.org/simple"}
+            : ${PYPI_INDEX_URL:="https://pypi.python.org/simple"}
+            GALAXY_CONDITIONAL_DEPENDENCIES=$(PYTHONPATH=lib python -c "import galaxy.dependencies; print(\"\\n\".join(galaxy.dependencies.optional(\"$GALAXY_CONFIG_FILE\")))")
+            [ -z "$GALAXY_CONDITIONAL_DEPENDENCIES" ] || echo "$GALAXY_CONDITIONAL_DEPENDENCIES" | pip install -q -r /dev/stdin --index-url "${GALAXY_WHEELS_INDEX_URL}" --extra-index-url "${PYPI_INDEX_URL}"
+        '
 fi
 
 if [[ ! -z $LOAD_GALAXY_CONDITIONAL_DEPENDENCIES ]] && [[ ! -z $LOAD_PYTHON_DEV_DEPENDENCIES ]]
     then
         echo "Installing development requirements in galaxy virtual environment..."
-        : ${GALAXY_WHEELS_INDEX_URL:="https://wheels.galaxyproject.org/simple"}
-        : ${PYPI_INDEX_URL:="https://pypi.python.org/simple"}
-        dev_requirements='./lib/galaxy/dependencies/dev-requirements.txt'
-        [ -f $dev_requirements ] && pip install -q -r $dev_requirements --index-url "${GALAXY_WHEELS_INDEX_URL}" --extra-index-url "${PYPI_INDEX_URL}"
+        sudo -E -u $GALAXY_USER bash -c '
+            . $GALAXY_VIRTUAL_ENV/bin/activate
+            : ${GALAXY_WHEELS_INDEX_URL:="https://wheels.galaxyproject.org/simple"}
+            : ${PYPI_INDEX_URL:="https://pypi.python.org/simple"}
+            dev_requirements="./lib/galaxy/dependencies/dev-requirements.txt"
+            [ -f $dev_requirements ] && pip install -q -r $dev_requirements --index-url "${GALAXY_WHEELS_INDEX_URL}" --extra-index-url "${PYPI_INDEX_URL}"
+        '
 fi
 
 # Enable Test Tool Shed

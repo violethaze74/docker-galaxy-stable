@@ -2,104 +2,42 @@
 #
 # VERSION       Galaxy-central
 
-FROM ubuntu:22.04
-
-LABEL maintainer="Björn A. Grüning <bjoern.gruening@gmail.com>"
-
 # TODO
 #
 # * README: only Docker next to Docker is supported
 # * NodeJS is getting globally installed via the playbook, this is not needed anymore isn't it?
 # * the playbooks are not cleaning anything up
 #
-ARG GALAXY_RELEASE
-ARG GALAXY_REPO
 
-ENV GALAXY_RELEASE=${GALAXY_RELEASE:-release_24.1} \
-    GALAXY_REPO=${GALAXY_REPO:-https://github.com/galaxyproject/galaxy} \
-    GALAXY_ROOT_DIR=/galaxy-central \
-    GALAXY_CONFIG_DIR=/etc/galaxy \
-    EXPORT_DIR=/export \
-    DEBIAN_FRONTEND=noninteractive \
-    PG_VERSION=15 \
-    MINIFORGE_VERSION=24.3.0-0
+FROM buildpack-deps:22.04 AS build_base
 
-ENV GALAXY_CONFIG_FILE=$GALAXY_CONFIG_DIR/galaxy.yml \
-    GALAXY_CONFIG_JOB_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_conf.xml \
-    GALAXY_CONFIG_JOB_METRICS_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_metrics_conf.yml \
-    GALAXY_CONFIG_TOOL_CONFIG_FILE=$GALAXY_CONFIG_DIR/tool_conf.xml \
-    GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH=$GALAXY_CONFIG_DIR/tool_data_table_conf.xml \
-    GALAXY_CONFIG_WATCH_TOOL_DATA_DIR=True \
-    GALAXY_CONFIG_TOOL_DEPENDENCY_DIR=$EXPORT_DIR/tool_deps \
-    GALAXY_CONFIG_TOOL_PATH=$EXPORT_DIR/galaxy-central/tools \
+ENV GALAXY_ROOT_DIR=/galaxy-central \
     GALAXY_VIRTUAL_ENV=/galaxy_venv \
     GALAXY_USER=galaxy \
     GALAXY_UID=1450 \
     GALAXY_GID=1450 \
-    GALAXY_POSTGRES_UID=1550 \
-    GALAXY_POSTGRES_GID=1550 \
     GALAXY_HOME=/home/galaxy \
-    GALAXY_LOGS_DIR=/home/galaxy/logs \
-    GALAXY_DEFAULT_ADMIN_USER=admin \
-    GALAXY_DEFAULT_ADMIN_EMAIL=admin@galaxy.org \
-    GALAXY_DEFAULT_ADMIN_PASSWORD=password \
-    GALAXY_DEFAULT_ADMIN_KEY=fakekey \
-    GALAXY_DESTINATIONS_DEFAULT=slurm_cluster \
-    GALAXY_RUNNERS_ENABLE_SLURM=True \
-    GALAXY_RUNNERS_ENABLE_CONDOR=False \
-    GALAXY_CONFIG_DATABASE_CONNECTION=postgresql://galaxy:galaxy@localhost:5432/galaxy?client_encoding=utf8 \
-    GALAXY_CONFIG_ADMIN_USERS=admin@galaxy.org \
-    GALAXY_CONFIG_BOOTSTRAP_ADMIN_API_KEY=HSNiugRFvgT574F43jZ7N9F3 \
-    GALAXY_CONFIG_BRAND="Galaxy Docker Build" \
-    GALAXY_CONFIG_STATIC_ENABLED=False \
-    # Define the default postgresql database path
-    PG_DATA_DIR_DEFAULT=/var/lib/postgresql/$PG_VERSION/main/ \
-    PG_CONF_DIR_DEFAULT=/etc/postgresql/$PG_VERSION/main/ \
-    PG_DATA_DIR_HOST=$EXPORT_DIR/postgresql/$PG_VERSION/main/ \
-    # The following ENV var can be used to set the number of gunicorn workers
-    GUNICORN_WORKERS=2 \
-    # The following ENV var can be used to set the number of celery workers
-    CELERY_WORKERS=2 \
-    # Set HTTPS to use a self-signed certificate (or your own certificate in $EXPORT_DIR/{server.key,server.crt})
-    USE_HTTPS=False \
-    # Set USE_HTTPS_LENSENCRYPT and GALAXY_DOMAIN to a domain that is reachable to get a letsencrypt certificate
-    USE_HTTPS_LETSENCRYPT=False \
-    GALAXY_DOMAIN=localhost \
-    # Set the number of Galaxy handlers
-    GALAXY_HANDLER_NUMPROCS=2 \
-    # Setting a standard encoding. This can get important for things like the unix sort tool.
-    LC_ALL=en_US.UTF-8 \
-    LANG=en_US.UTF-8 \
-    NODE_OPTIONS=--max-old-space-size=4096 \
     GALAXY_CONDA_PREFIX=/tool_deps/_conda \
-    GRAVITY_CONFIG_FILE=$GALAXY_CONFIG_DIR/gravity.yml \
-    GALAXY_CONFIG_TUS_UPLOAD_STORE=/tmp/tus_upload_store \
-    GALAXY_CONFIG_INTERACTIVETOOLS_MAP=$GALAXY_ROOT_DIR/database/interactivetools_map.sqlite \
-    GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE=$GALAXY_CONFIG_DIR/tools_conf_interactive.xml
+    MINIFORGE_VERSION=24.3.0-0
 
-# 16MB
+ADD ./common_cleanup.sh /usr/bin/common_cleanup.sh
+RUN chmod +x /usr/bin/common_cleanup.sh
+
 RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/02apt-speedup \
     && echo "Acquire::http {No-Cache=True;};" > /etc/apt/apt.conf.d/no-cache \
-    && apt-get -qq update && apt-get install --no-install-recommends -y locales \
+    && echo 'APT::Install-Recommends "0";' > /etc/apt/apt.conf.d/99no-install-recommends \
+    && apt-get -qq update && apt-get install -y locales \
     && locale-gen en_US.UTF-8 && dpkg-reconfigure locales \
-    && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ~/.cache/ \
-    && rm -rf /tmp/* /root/.cache/ /var/cache/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm/
-
-# Create the postgres user before apt-get does (with the configured UID/GID) to facilitate sharing $EXPORT_DIR/postgresql with non-Linux hosts
-RUN groupadd -r postgres -g $GALAXY_POSTGRES_GID \
-    && adduser --system --quiet --home /var/lib/postgresql --no-create-home --shell /bin/bash --gecos "" --uid $GALAXY_POSTGRES_UID --gid $GALAXY_POSTGRES_GID postgres \
+    && apt-get autoremove -y && apt-get clean \
     && groupadd -r $GALAXY_USER -g $GALAXY_GID \
-    && useradd -u $GALAXY_UID -r -g $GALAXY_USER -d $GALAXY_HOME -c "Galaxy user" --shell /bin/bash $GALAXY_USER \
-    && mkdir $EXPORT_DIR $GALAXY_HOME $GALAXY_LOGS_DIR && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_HOME $EXPORT_DIR $GALAXY_LOGS_DIR \
-    && apt-get -qq update && apt-get install --no-install-recommends -y curl sudo ca-certificates nano git gridengine-common gridengine-drmaa1.0 libswitch-perl \
-    # cleanup dance
-    && find /usr/lib/ -name '*.pyc' -delete \
-    && rm -rf /tmp/* /root/.cache/ /var/cache/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm/
+    && useradd -u $GALAXY_UID -r -g $GALAXY_USER -d $GALAXY_HOME -m -c "Galaxy user" --shell /bin/bash $GALAXY_USER \
+    && /usr/bin/common_cleanup.sh
+
+
+# Install miniforge and then virtualenv from conda
+FROM build_base AS build_miniforge
 
 ADD ./bashrc $GALAXY_HOME/.bashrc
-
-# Install miniforge, then virtualenv from conda and then
-# download latest stable release of Galaxy.
 
 RUN curl -s -L https://github.com/conda-forge/miniforge/releases/download/$MINIFORGE_VERSION/Miniforge3-$MINIFORGE_VERSION-Linux-x86_64.sh > ~/miniforge.sh \
     && /bin/bash ~/miniforge.sh -b -p $GALAXY_CONDA_PREFIX/ \
@@ -110,77 +48,106 @@ RUN curl -s -L https://github.com/conda-forge/miniforge/releases/download/$MINIF
     && export PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH \
     && conda config --add channels bioconda \
     && conda install virtualenv pip ephemeris \
-    && chown $GALAXY_USER:$GALAXY_USER -R /tool_deps/ /etc/profile.d/conda.sh \
     && conda clean --packages -t -i \
-    # cleanup dance
-    && find $GALAXY_ROOT_DIR -name '*.pyc' -delete | true \
-    && find /usr/lib/ -name '*.pyc' -delete | true \
-    && find $GALAXY_VIRTUAL_ENV -name '*.pyc' -delete | true \
-    && rm -rf /tmp/* /root/.cache/ /var/cache/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm
+    && /usr/bin/common_cleanup.sh
 
 
-RUN cp $GALAXY_HOME/.bashrc ~/
-RUN mkdir $GALAXY_ROOT_DIR \
+FROM build_base AS build_galaxy
+
+ARG GALAXY_RELEASE=release_24.1
+ARG GALAXY_REPO=https://github.com/galaxyproject/galaxy
+
+ENV NODE_OPTIONS=--max-old-space-size=4096
+
+COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniforge /tool_deps /tool_deps
+
+RUN mkdir $GALAXY_ROOT_DIR $GALAXY_VIRTUAL_ENV \
+    # download latest stable release of Galaxy.
     && curl -L -s $GALAXY_REPO/archive/$GALAXY_RELEASE.tar.gz | tar xzf - --strip-components=1 -C $GALAXY_ROOT_DIR \
     && PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH virtualenv $GALAXY_VIRTUAL_ENV \
-    && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_VIRTUAL_ENV \
-    && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_ROOT_DIR \
-    # Setup Galaxy configuration files.
-    && mkdir -p $GALAXY_CONFIG_DIR $GALAXY_CONFIG_DIR/web \
-    && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_DIR \
-    && rm -rf /tmp/* /root/.cache/ /var/cache/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm \
-    && su $GALAXY_USER -c "cp $GALAXY_ROOT_DIR/config/galaxy.yml.sample $GALAXY_CONFIG_FILE" \
-    && su $GALAXY_USER -c "cp $GALAXY_ROOT_DIR/config/tool_conf.xml.sample $GALAXY_CONFIG_TOOL_CONFIG_FILE" \
-    # cleanup dance
-    && find $GALAXY_ROOT_DIR -name '*.pyc' -delete | true \
-    && find /usr/lib/ -name '*.pyc' -delete | true \
-    && find $GALAXY_VIRTUAL_ENV -name '*.pyc' -delete | true \
-    && rm -rf /tmp/* /root/.cache/ /var/cache/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm
+    # Install galaxy client
+    && cd $GALAXY_ROOT_DIR && ./scripts/common_startup.sh \
+    && . $GALAXY_VIRTUAL_ENV/bin/activate \
+    && pip install "weasyprint>=61.2" watchdog --index-url https://wheels.galaxyproject.org/simple --extra-index-url https://pypi.python.org/simple \
+    && deactivate \
+    && cd config && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + \
+    && find . -name '.cache' -type d -prune -exec rm -rf '{}' + \
+    && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_ROOT_DIR $GALAXY_VIRTUAL_ENV \
+    && rm -rf $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ \
+    && /usr/bin/common_cleanup.sh
 
 
-ADD ./reports.yml.sample $GALAXY_CONFIG_DIR/reports.yml
-ADD sample_tool_list.yaml $GALAXY_HOME/ephemeris/sample_tool_list.yaml
+FROM ubuntu:22.04 AS galaxy_cluster_base
 
-# Activate Interactive Tools during runtime
-ADD ./tools_conf_interactive.xml.sample $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE
+ENV GALAXY_ROOT_DIR=/galaxy-central \
+    GALAXY_VIRTUAL_ENV=/galaxy_venv \
+    GALAXY_LOGS_DIR=/home/galaxy/logs \
+    GALAXY_CONFIG_DIR=/etc/galaxy \
+    GALAXY_USER=galaxy \
+    GALAXY_UID=1450 \
+    GALAXY_GID=1450 \
+    GALAXY_HOME=/home/galaxy \
+    GALAXY_CONDA_PREFIX=/tool_deps/_conda \
+    EXPORT_DIR=/export \
+    DEBIAN_FRONTEND=noninteractive \
+    PG_VERSION=15
 
-RUN curl -o $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH \
-    -L https://raw.githubusercontent.com/galaxyproject/usegalaxy-playbook/8adb1f82c94fe95b09df2a2816440ce2420b7d39/env/main/files/galaxy/config/tool_data_table_conf.xml \
-    && chown $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH \
-    && chmod 0644 $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH
+ENV GALAXY_CONFIG_FILE=$GALAXY_CONFIG_DIR/galaxy.yml \
+    GALAXY_CONFIG_JOB_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_conf.xml \
+    GALAXY_CONFIG_JOB_METRICS_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_metrics_conf.yml \
+    GALAXY_CONFIG_TUS_UPLOAD_STORE=$EXPORT_DIR/tus_upload_store \
+    GALAXY_CONFIG_INTERACTIVETOOLS_MAP=$EXPORT_DIR/galaxy-central/database/interactivetools_map.sqlite \
+    GRAVITY_CONFIG_FILE=$GALAXY_CONFIG_DIR/gravity.yml \
+    GALAXY_POSTGRES_UID=1550 \
+    GALAXY_POSTGRES_GID=1550 \
+    # Define the default postgresql database path
+    PG_DATA_DIR_DEFAULT=/var/lib/postgresql/$PG_VERSION/main/ \
+    PG_CONF_DIR_DEFAULT=/etc/postgresql/$PG_VERSION/main/ \
+    PG_DATA_DIR_HOST=$EXPORT_DIR/postgresql/$PG_VERSION/main/
+
+ADD ./common_cleanup.sh /usr/bin/common_cleanup.sh
+RUN chmod +x /usr/bin/common_cleanup.sh
+
+RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/02apt-speedup \
+    && echo "Acquire::http {No-Cache=True;};" > /etc/apt/apt.conf.d/no-cache \
+    && echo 'APT::Install-Recommends "0";' > /etc/apt/apt.conf.d/99no-install-recommends \
+    && apt-get -qq update && apt-get install -y locales \
+    && locale-gen en_US.UTF-8 && dpkg-reconfigure locales \
+    && apt-get autoremove -y && apt-get clean \
+    && /usr/bin/common_cleanup.sh
 
 ADD ansible/ /ansible/
 
-# Install ansible and related dependencies
-RUN apt update -qq && apt install --no-install-recommends -y software-properties-common dirmngr gpg gpg-agent bsdmainutils \
-    && sudo add-apt-repository ppa:ansible/ansible-7 \
-    && apt install --no-install-recommends -y ansible \
+# Install ansible and other dependencies
+RUN apt-get -qq update \
+    && apt install -y software-properties-common dirmngr gpg gpg-agent \
+    && apt install -y sudo ca-certificates nano git gridengine-common gridengine-drmaa1.0 libswitch-perl \
+    && add-apt-repository ppa:ansible/ansible-7 \
+    && apt install -y ansible \
     # Make python3 standard
     && update-alternatives --install /usr/bin/python python /usr/bin/python3 10 \
-    && apt purge -y systemd && apt-get autoremove -y && apt-get clean
+    && apt purge -y software-properties-common systemd && apt-get autoremove -y && apt-get clean \
+    # Install ansible roles
+    && ansible-galaxy install -r /ansible/requirements.yml -p /ansible/roles \
+    && groupadd -r $GALAXY_USER -g $GALAXY_GID \
+    && useradd -u $GALAXY_UID -r -g $GALAXY_USER -d $GALAXY_HOME -m -c "Galaxy user" --shell /bin/bash $GALAXY_USER \
+    # Create the postgres user before apt-get does (with the configured UID/GID) to facilitate sharing $EXPORT_DIR/postgresql with non-Linux hosts
+    && groupadd -r postgres -g $GALAXY_POSTGRES_GID \
+    && adduser --system --quiet --home /var/lib/postgresql --no-create-home --shell /bin/bash --gecos "" --uid $GALAXY_POSTGRES_UID --gid $GALAXY_POSTGRES_GID postgres \
+    && mkdir -p $GALAXY_ROOT_DIR $GALAXY_VIRTUAL_ENV $GALAXY_CONFIG_DIR $GALAXY_CONFIG_DIR/web $GALAXY_LOGS_DIR $EXPORT_DIR \
+    && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_ROOT_DIR $GALAXY_VIRTUAL_ENV $GALAXY_CONFIG_DIR $GALAXY_LOGS_DIR $EXPORT_DIR \
+    && /usr/bin/common_cleanup.sh
 
-# Install ansible roles
-RUN ansible-galaxy install -r /ansible/requirements.yml -p /ansible/roles
+COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniforge /tool_deps /tool_deps
 
-# Install flower separately as systemd tasks (tagged with 'service') have to be skipped
-RUN export PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH \
-    && ansible-playbook /ansible/flower.yml --skip-tags service \
-    --extra-vars flower_venv_dir=$GALAXY_VIRTUAL_ENV \
-    --extra-vars flower_db_file=$GALAXY_ROOT_DIR/database/flower.db \
-    --extra-vars flower_user=$GALAXY_USER \
-    --extra-vars flower_group=$GALAXY_USER \
-    --extra-vars flower_venv_user=$GALAXY_USER \
-    --extra-vars flower_venv_group=$GALAXY_USER
-
-RUN mkdir -p /shed_tools $GALAXY_CONFIG_TUS_UPLOAD_STORE \
-    && chown $GALAXY_USER:$GALAXY_USER /shed_tools $GALAXY_CONFIG_TUS_UPLOAD_STORE \
-    && ln -s /tool_deps/ $EXPORT_DIR/tool_deps \
-    # Configure Galaxy to use the Tool Shed
-    && chown $GALAXY_USER:$GALAXY_USER $EXPORT_DIR/tool_deps $GALAXY_VIRTUAL_ENV -R \
+# Install necessary components and dependencies for running Galaxy
+RUN PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH virtualenv $GALAXY_VIRTUAL_ENV \
+    && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_VIRTUAL_ENV \
     && ansible-playbook /ansible/provision.yml \
     --extra-vars galaxy_server_dir=$GALAXY_ROOT_DIR \
     --extra-vars galaxy_venv_dir=$GALAXY_VIRTUAL_ENV \
     --extra-vars galaxy_logs_dir=$GALAXY_LOGS_DIR \
+    --extra-vars galaxy_user_name=$GALAXY_USER \
     --extra-vars galaxy_config_file=$GALAXY_CONFIG_FILE \
     --extra-vars galaxy_config_dir=$GALAXY_CONFIG_DIR \
     --extra-vars gravity_config_file=$GRAVITY_CONFIG_FILE \
@@ -197,19 +164,79 @@ RUN mkdir -p /shed_tools $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars galaxy_ftp_upload_dir=$EXPORT_DIR/ftp \
     --extra-vars tus_upload_store_path=$GALAXY_CONFIG_TUS_UPLOAD_STORE \
     --extra-vars gx_it_proxy_sessions_path=$GALAXY_CONFIG_INTERACTIVETOOLS_MAP \
-    && . $GALAXY_VIRTUAL_ENV/bin/activate \
-    && pip install weasyprint>=61.2 \
-    && deactivate \
-    && find $GALAXY_ROOT_DIR/config -name 'node_modules' -type d -prune -exec rm -rf '{}' + \
-    && find $GALAXY_ROOT_DIR/config -name '.cache' -type d -prune -exec rm -rf '{}' + \
-    && apt purge software-properties-common dirmngr gpg gpg-agent -y && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ~/.cache/ \
-    # cleanup dance
-    && find $GALAXY_ROOT_DIR/ -name '*.pyc' -delete | true \
-    && find /usr/lib/ -name '*.pyc' -delete | true \
-    && find /var/log/ -name '*.log' -delete | true \
-    && find $GALAXY_VIRTUAL_ENV -name '*.pyc' -delete | true \
-    && rm -rf /tmp/* /root/.cache/ /var/cache/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm
+    # Install flower separately as systemd tasks (tagged with 'service') have to be skipped
+    && PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH ansible-playbook /ansible/flower.yml --skip-tags service \
+    --extra-vars flower_venv_dir=$GALAXY_VIRTUAL_ENV \
+    --extra-vars flower_db_file=$EXPORT_DIR/galaxy-central/database/flower.db \
+    --extra-vars flower_user=$GALAXY_USER \
+    --extra-vars flower_group=$GALAXY_USER \
+    --extra-vars flower_venv_user=$GALAXY_USER \
+    --extra-vars flower_venv_group=$GALAXY_USER \
+    && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_VIRTUAL_ENV \
+    && apt purge -y software-properties-common dirmngr gpg gpg-agent && apt-get autoremove -y && apt-get clean \
+    && /usr/bin/common_cleanup.sh
 
+
+FROM galaxy_cluster_base AS final
+
+LABEL maintainer="Björn A. Grüning <bjoern.gruening@gmail.com>"
+
+ENV GALAXY_CONFIG_TOOL_CONFIG_FILE=$GALAXY_CONFIG_DIR/tool_conf.xml \
+    GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH=$GALAXY_CONFIG_DIR/tool_data_table_conf.xml \
+    GALAXY_CONFIG_WATCH_TOOL_DATA_DIR=True \
+    GALAXY_CONFIG_TOOL_DEPENDENCY_DIR=$EXPORT_DIR/tool_deps \
+    GALAXY_CONFIG_TOOL_PATH=$EXPORT_DIR/galaxy-central/tools \
+    GALAXY_DEFAULT_ADMIN_USER=admin \
+    GALAXY_DEFAULT_ADMIN_EMAIL=admin@galaxy.org \
+    GALAXY_DEFAULT_ADMIN_PASSWORD=password \
+    GALAXY_DEFAULT_ADMIN_KEY=fakekey \
+    GALAXY_DESTINATIONS_DEFAULT=slurm_cluster \
+    GALAXY_RUNNERS_ENABLE_SLURM=True \
+    GALAXY_RUNNERS_ENABLE_CONDOR=False \
+    GALAXY_CONFIG_DATABASE_CONNECTION=postgresql://galaxy:galaxy@localhost:5432/galaxy?client_encoding=utf8 \
+    GALAXY_CONFIG_ADMIN_USERS=admin@galaxy.org \
+    GALAXY_CONFIG_BOOTSTRAP_ADMIN_API_KEY=HSNiugRFvgT574F43jZ7N9F3 \
+    GALAXY_CONFIG_BRAND="Galaxy Docker Build" \
+    GALAXY_CONFIG_STATIC_ENABLED=False \
+    GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE=$GALAXY_CONFIG_DIR/tools_conf_interactive.xml \
+    # The following ENV var can be used to set the number of gunicorn workers
+    GUNICORN_WORKERS=2 \
+    # The following ENV var can be used to set the number of celery workers
+    CELERY_WORKERS=2 \
+    # Set HTTPS to use a self-signed certificate (or your own certificate in $EXPORT_DIR/{server.key,server.crt})
+    USE_HTTPS=False \
+    # Set USE_HTTPS_LENSENCRYPT and GALAXY_DOMAIN to a domain that is reachable to get a letsencrypt certificate
+    USE_HTTPS_LETSENCRYPT=False \
+    GALAXY_DOMAIN=localhost \
+    # Set the number of Galaxy handlers
+    GALAXY_HANDLER_NUMPROCS=2 \
+    # Setting a standard encoding. This can get important for things like the unix sort tool.
+    LC_ALL=en_US.UTF-8 \
+    LANG=en_US.UTF-8
+
+COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_galaxy $GALAXY_ROOT_DIR $GALAXY_ROOT_DIR
+COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_galaxy $GALAXY_VIRTUAL_ENV $GALAXY_VIRTUAL_ENV
+COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniforge $GALAXY_HOME $GALAXY_HOME
+COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniforge /etc/profile.d/conda.sh /etc/profile.d/conda.sh
+
+ADD ./reports.yml.sample $GALAXY_CONFIG_DIR/reports.yml
+ADD sample_tool_list.yaml $GALAXY_HOME/ephemeris/sample_tool_list.yaml
+
+# Activate Interactive Tools during runtime
+ADD ./tools_conf_interactive.xml.sample $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE
+
+RUN mkdir -p /tus_upload_store \
+    && ln -s /tool_deps/ $GALAXY_CONFIG_TOOL_DEPENDENCY_DIR \
+    && ln -s /tus_upload_store/ $GALAXY_CONFIG_TUS_UPLOAD_STORE \
+    && chown $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_TOOL_DEPENDENCY_DIR $GALAXY_CONFIG_TUS_UPLOAD_STORE \
+    # Configure Galaxy to use the Tool Shed
+    && cp $GALAXY_HOME/.bashrc ~/ \
+    && su $GALAXY_USER -c "cp $GALAXY_ROOT_DIR/config/galaxy.yml.sample $GALAXY_CONFIG_FILE" \
+    && su $GALAXY_USER -c "cp $GALAXY_ROOT_DIR/config/tool_conf.xml.sample $GALAXY_CONFIG_TOOL_CONFIG_FILE" \
+    && curl -o $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH \
+    -L https://raw.githubusercontent.com/galaxyproject/usegalaxy-playbook/8adb1f82c94fe95b09df2a2816440ce2420b7d39/env/main/files/galaxy/config/tool_data_table_conf.xml \
+    && chown $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH \
+    && chmod 0644 $GALAXY_CONFIG_DIR/reports.yml $GALAXY_HOME/ephemeris/sample_tool_list.yaml $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE $GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH
 
 # Include all needed scripts from the host
 ADD ./setup_postgresql.py /usr/local/bin/setup_postgresql.py
@@ -258,22 +285,6 @@ ENV GALAXY_CONFIG_JOB_WORKING_DIRECTORY=$EXPORT_DIR/galaxy-central/database/job_
 # Container Style
 ADD GalaxyDocker.png $GALAXY_CONFIG_DIR/web/welcome_image.png
 ADD welcome.html $GALAXY_CONFIG_DIR/web/welcome.html
-
-#RUN ./scripts/common_startup.sh \
-#    && export PATH=GALAXY_CONDA_PREFIX/bin/:$PATH \
-#    && . $GALAXY_VIRTUAL_ENV/bin/activate \
-#    && python ./scripts/manage_tool_dependencies.py -c "$GALAXY_CONFIG_FILE" init_if_needed \
-#    # cleanup dance
-#    && find $GALAXY_ROOT_DIR/ -name '*.pyc' -delete \
-#    && find /usr/lib/ -name '*.pyc' -delete \
-#    && find $GALAXY_CONDA_PREFIX/ -name '*.pyc' -delete \
-#    && find $GALAXY_VIRTUAL_ENV -name '*.pyc' -delete \
-#    && rm -rf /tmp/* $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ /home/galaxy/.cache/ /home/galaxy/.npm
-
-# Install all required Node dependencies. This is required to get proxy support to work for Interactive Environments
-#cd $GALAXY_ROOT_DIR/lib/galaxy/web/proxy/js && \
-#npm install && \
-#rm -rf ~/.cache/ $GALAXY_ROOT_DIR/client/node_modules/
 
 # Switch back to User root
 USER root

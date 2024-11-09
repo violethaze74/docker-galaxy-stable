@@ -13,30 +13,15 @@ FROM buildpack-deps:22.04 AS build_base
 
 ENV GALAXY_ROOT_DIR=/galaxy-central \
     GALAXY_VIRTUAL_ENV=/galaxy_venv \
-    GALAXY_USER=galaxy \
-    GALAXY_UID=1450 \
-    GALAXY_GID=1450 \
     GALAXY_HOME=/home/galaxy \
     GALAXY_CONDA_PREFIX=/tool_deps/_conda \
     MINIFORGE_VERSION=24.3.0-0
-
-ADD ./common_cleanup.sh /usr/bin/common_cleanup.sh
-RUN chmod +x /usr/bin/common_cleanup.sh
-
-RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/02apt-speedup \
-    && echo "Acquire::http {No-Cache=True;};" > /etc/apt/apt.conf.d/no-cache \
-    && echo 'APT::Install-Recommends "0";' > /etc/apt/apt.conf.d/99no-install-recommends \
-    && apt-get -qq update && apt-get install -y locales \
-    && locale-gen en_US.UTF-8 && dpkg-reconfigure locales \
-    && apt-get autoremove -y && apt-get clean \
-    && groupadd -r $GALAXY_USER -g $GALAXY_GID \
-    && useradd -u $GALAXY_UID -r -g $GALAXY_USER -d $GALAXY_HOME -m -c "Galaxy user" --shell /bin/bash $GALAXY_USER \
-    && /usr/bin/common_cleanup.sh
 
 
 # Install miniforge and then virtualenv from conda
 FROM build_base AS build_miniforge
 
+RUN mkdir $GALAXY_HOME
 ADD ./bashrc $GALAXY_HOME/.bashrc
 
 RUN curl -s -L https://github.com/conda-forge/miniforge/releases/download/$MINIFORGE_VERSION/Miniforge3-$MINIFORGE_VERSION-Linux-x86_64.sh > ~/miniforge.sh \
@@ -49,7 +34,7 @@ RUN curl -s -L https://github.com/conda-forge/miniforge/releases/download/$MINIF
     && conda config --add channels bioconda \
     && conda install virtualenv pip ephemeris \
     && conda clean --packages -t -i \
-    && /usr/bin/common_cleanup.sh
+    && find $GALAXY_CONDA_PREFIX -name '*.pyc' -delete
 
 
 FROM build_base AS build_galaxy
@@ -59,7 +44,7 @@ ARG GALAXY_REPO=https://github.com/galaxyproject/galaxy
 
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
-COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniforge /tool_deps /tool_deps
+COPY --from=build_miniforge /tool_deps /tool_deps
 
 RUN mkdir $GALAXY_ROOT_DIR $GALAXY_VIRTUAL_ENV \
     # download latest stable release of Galaxy.
@@ -72,9 +57,8 @@ RUN mkdir $GALAXY_ROOT_DIR $GALAXY_VIRTUAL_ENV \
     && deactivate \
     && cd config && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + \
     && find . -name '.cache' -type d -prune -exec rm -rf '{}' + \
-    && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_ROOT_DIR $GALAXY_VIRTUAL_ENV \
-    && rm -rf $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/ \
-    && /usr/bin/common_cleanup.sh
+    && find $GALAXY_ROOT_DIR -name '*.pyc' -delete && find $GALAXY_VIRTUAL_ENV -name '*.pyc' -delete \ 
+    && rm -rf $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/
 
 
 FROM ubuntu:22.04 AS galaxy_cluster_base
@@ -95,8 +79,8 @@ ENV GALAXY_ROOT_DIR=/galaxy-central \
 ENV GALAXY_CONFIG_FILE=$GALAXY_CONFIG_DIR/galaxy.yml \
     GALAXY_CONFIG_JOB_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_conf.xml \
     GALAXY_CONFIG_JOB_METRICS_CONFIG_FILE=$GALAXY_CONFIG_DIR/job_metrics_conf.yml \
-    GALAXY_CONFIG_TUS_UPLOAD_STORE=$EXPORT_DIR/tus_upload_store \
-    GALAXY_CONFIG_INTERACTIVETOOLS_MAP=$EXPORT_DIR/galaxy-central/database/interactivetools_map.sqlite \
+    GALAXY_CONFIG_TUS_UPLOAD_STORE=/tmp/tus_upload_store \
+    GALAXY_CONFIG_INTERACTIVETOOLS_MAP=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/interactivetools_map.sqlite \
     GRAVITY_CONFIG_FILE=$GALAXY_CONFIG_DIR/gravity.yml \
     GALAXY_POSTGRES_UID=1550 \
     GALAXY_POSTGRES_GID=1550 \
@@ -106,7 +90,6 @@ ENV GALAXY_CONFIG_FILE=$GALAXY_CONFIG_DIR/galaxy.yml \
     PG_DATA_DIR_HOST=$EXPORT_DIR/postgresql/$PG_VERSION/main/
 
 ADD ./common_cleanup.sh /usr/bin/common_cleanup.sh
-RUN chmod +x /usr/bin/common_cleanup.sh
 
 RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/02apt-speedup \
     && echo "Acquire::http {No-Cache=True;};" > /etc/apt/apt.conf.d/no-cache \
@@ -114,6 +97,7 @@ RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/02apt-speedup \
     && apt-get -qq update && apt-get install -y locales \
     && locale-gen en_US.UTF-8 && dpkg-reconfigure locales \
     && apt-get autoremove -y && apt-get clean \
+    && chmod +x /usr/bin/common_cleanup.sh \
     && /usr/bin/common_cleanup.sh
 
 ADD ansible/ /ansible/
@@ -167,7 +151,7 @@ RUN PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH virtualenv $GALAXY_VIRTUAL_ENV \
     # Install flower separately as systemd tasks (tagged with 'service') have to be skipped
     && PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH ansible-playbook /ansible/flower.yml --skip-tags service \
     --extra-vars flower_venv_dir=$GALAXY_VIRTUAL_ENV \
-    --extra-vars flower_db_file=$EXPORT_DIR/galaxy-central/database/flower.db \
+    --extra-vars flower_db_file=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/flower.db \
     --extra-vars flower_user=$GALAXY_USER \
     --extra-vars flower_group=$GALAXY_USER \
     --extra-vars flower_venv_user=$GALAXY_USER \
@@ -181,11 +165,12 @@ FROM galaxy_cluster_base AS final
 
 LABEL maintainer="Björn A. Grüning <bjoern.gruening@gmail.com>"
 
-ENV GALAXY_CONFIG_TOOL_CONFIG_FILE=$GALAXY_CONFIG_DIR/tool_conf.xml \
+ENV GALAXY_CONFIG_MANAGED_CONFIG_DIR=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/config \
+    GALAXY_CONFIG_TOOL_CONFIG_FILE=$GALAXY_CONFIG_DIR/tool_conf.xml \
     GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH=$GALAXY_CONFIG_DIR/tool_data_table_conf.xml \
     GALAXY_CONFIG_WATCH_TOOL_DATA_DIR=True \
     GALAXY_CONFIG_TOOL_DEPENDENCY_DIR=$EXPORT_DIR/tool_deps \
-    GALAXY_CONFIG_TOOL_PATH=$EXPORT_DIR/galaxy-central/tools \
+    GALAXY_CONFIG_TOOL_PATH=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/tools \
     GALAXY_DEFAULT_ADMIN_USER=admin \
     GALAXY_DEFAULT_ADMIN_EMAIL=admin@galaxy.org \
     GALAXY_DEFAULT_ADMIN_PASSWORD=password \
@@ -225,9 +210,8 @@ ADD sample_tool_list.yaml $GALAXY_HOME/ephemeris/sample_tool_list.yaml
 # Activate Interactive Tools during runtime
 ADD ./tools_conf_interactive.xml.sample $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE
 
-RUN mkdir -p /tus_upload_store \
+RUN mkdir -p $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     && ln -s /tool_deps/ $GALAXY_CONFIG_TOOL_DEPENDENCY_DIR \
-    && ln -s /tus_upload_store/ $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     && chown $GALAXY_USER:$GALAXY_USER $GALAXY_CONFIG_TOOL_DEPENDENCY_DIR $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     # Configure Galaxy to use the Tool Shed
     && cp $GALAXY_HOME/.bashrc ~/ \
@@ -260,11 +244,11 @@ WORKDIR $GALAXY_ROOT_DIR
 # Updating genome informations from UCSC
 #RUN export GALAXY=$GALAXY_ROOT_DIR && sh ./cron/updateucsc.sh.sample
 
-ENV GALAXY_CONFIG_JOB_WORKING_DIRECTORY=$EXPORT_DIR/galaxy-central/database/job_working_directory \
-    GALAXY_CONFIG_FILE_PATH=$EXPORT_DIR/galaxy-central/database/files \
-    GALAXY_CONFIG_NEW_FILE_PATH=$EXPORT_DIR/galaxy-central/database/files \
-    GALAXY_CONFIG_TEMPLATE_CACHE_PATH=$EXPORT_DIR/galaxy-central/database/compiled_templates \
-    GALAXY_CONFIG_CITATION_CACHE_DATA_DIR=$EXPORT_DIR/galaxy-central/database/citations/data \
+ENV GALAXY_CONFIG_JOB_WORKING_DIRECTORY=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/job_working_directory \
+    GALAXY_CONFIG_FILE_PATH=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/files \
+    GALAXY_CONFIG_NEW_FILE_PATH=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/files \
+    GALAXY_CONFIG_TEMPLATE_CACHE_PATH=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/compiled_templates \
+    GALAXY_CONFIG_CITATION_CACHE_DATA_DIR=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/citations/data \
     GALAXY_CONFIG_FTP_UPLOAD_DIR=$EXPORT_DIR/ftp \
     GALAXY_CONFIG_FTP_UPLOAD_SITE=galaxy.docker.org \
     GALAXY_CONFIG_USE_PBKDF2=True \
@@ -313,7 +297,7 @@ RUN chmod +x $GALAXY_ROOT_DIR/run.sh && \
 
 # This needs to happen here and not above, otherwise the Galaxy start
 # (without running the startup.sh script) will crash because integrated_tool_panel.xml could not be found.
-ENV GALAXY_CONFIG_INTEGRATED_TOOL_PANEL_CONFIG $EXPORT_DIR/galaxy-central/integrated_tool_panel.xml
+ENV GALAXY_CONFIG_INTEGRATED_TOOL_PANEL_CONFIG $EXPORT_DIR/${GALAXY_ROOT_DIR#/}/integrated_tool_panel.xml
 
 # Expose port 80, 443 (webserver), 21 (FTP server), 4002 (Proxy), 9002 (supvisord web app)
 EXPOSE 21

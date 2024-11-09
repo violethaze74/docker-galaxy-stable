@@ -244,14 +244,14 @@ With this method, you keep a backup in case you decide to downgrade, but require
 8. Copy all the users' datasets to the new instance
 
   ```
-  $ sudo rsync -var /data/galaxy-data-old/galaxy-central/database/files/* /data/galaxy-data/galaxy-central/da
-  tabase/files/
+  $ sudo rsync -var /data/galaxy-data-old/galaxy-central/database/files/* /data/galaxy-data/galaxy-central/database/files/
   ```
 9. Copy all the installed tools
 
   ```
   $ sudo rsync -var /data/galaxy-data-old/tool_deps/* /data/galaxy-data/tool_deps/
   $ sudo rsync -var /data/galaxy-data-old/galaxy-central/database/shed_tools/* /data/galaxy-data/galaxy-central/database/shed_tools/
+  $ sudo rsync -var /data/galaxy-data-old/galaxy-central/database/config/* /data/galaxy-data/galaxy-central/database/config/
   ```
 10. Copy the welcome page and all its files.
 

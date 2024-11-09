@@ -14,7 +14,7 @@ reports:
   file_path: database/files
 
   # Where temporary files are stored.
-  new_file_path: database/files
+  #new_file_path: database/tmp
 
   # Mako templates are compiled as needed and cached for reuse, this
   # directory is used for the cache

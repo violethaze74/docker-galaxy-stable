@@ -18,7 +18,7 @@
           #!/usr/bin/env sh
           export GRAVITY_CONFIG_FILE={{ gravity_config_file }}
           export GRAVITY_STATE_DIR={{ gravity_state_dir }}
-          exec sudo -E -u $GALAXY_USER {{ galaxy_venv_dir }}/bin/galaxyctl "$@"
+          exec sudo -E -H -u $GALAXY_USER {{ galaxy_venv_dir }}/bin/galaxyctl "$@"
         dest: "/usr/local/bin/galaxyctl"
         mode: "0755"
       become: True

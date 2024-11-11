@@ -58,7 +58,7 @@ galaxy_k8s_jobs_fs_group_id: 0
 galaxy_k8s_jobs_pull_policy: IfNotPresent
 
 # Point at the existing Galaxy configuration.
-galaxy_server_dir: "/galaxy-central"
+galaxy_server_dir: "/galaxy"
 galaxy_job_conf_path: "{{ galaxy_server_dir }}/config/job_conf.xml"
 galaxy_container_resolvers_conf_path: "{{ galaxy_server_dir }}/config/container_resolvers_conf.yml"
 galaxy_job_metrics_conf_path: "{{ galaxy_server_dir }}/config/job_metrics_conf.yml"

@@ -171,7 +171,7 @@ fi
 if [[ ! -z $LOAD_GALAXY_CONDITIONAL_DEPENDENCIES ]]
     then
         echo "Installing optional dependencies in galaxy virtual environment..."
-        sudo -E -u $GALAXY_USER bash -c '
+        sudo -E -H -u $GALAXY_USER bash -c '
             . $GALAXY_VIRTUAL_ENV/bin/activate
             : ${GALAXY_WHEELS_INDEX_URL:="https://wheels.galaxyproject.org/simple"}
             : ${PYPI_INDEX_URL:="https://pypi.python.org/simple"}
@@ -183,7 +183,7 @@ fi
 if [[ ! -z $LOAD_GALAXY_CONDITIONAL_DEPENDENCIES ]] && [[ ! -z $LOAD_PYTHON_DEV_DEPENDENCIES ]]
     then
         echo "Installing development requirements in galaxy virtual environment..."
-        sudo -E -u $GALAXY_USER bash -c '
+        sudo -E -H -u $GALAXY_USER bash -c '
             . $GALAXY_VIRTUAL_ENV/bin/activate
             : ${GALAXY_WHEELS_INDEX_URL:="https://wheels.galaxyproject.org/simple"}
             : ${PYPI_INDEX_URL:="https://pypi.python.org/simple"}
@@ -389,6 +389,9 @@ function start_supervisor {
             wait_for_rabbitmq
             echo "Configuring rabbitmq users"
             ansible-playbook -c local /usr/local/bin/configure_rabbitmq_users.yml &> /dev/null
+
+            echo "Restarting rabbitmq"
+            supervisorctl restart rabbitmq
         fi    
     fi
 

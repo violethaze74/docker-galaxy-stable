@@ -18,15 +18,15 @@ docker run -d -v "$EXPORT":/export --name slurm \
 docker run -d -e "NONUSE=slurmd,slurmctld" \
    --link slurm --name galaxy-slurm-test -h galaxy \
    -p 80:80 -v "$EXPORT":/export quay.io/bgruening/galaxy
-# We wait for the creation of the /galaxy-central/config/ if it does not exist yet
+# We wait for the creation of the /galaxy/config/ if it does not exist yet
 sleep 180s
 # We restart galaxy
 docker stop galaxy-slurm-test
 docker rm galaxy-slurm-test
 
 # We copy the job_conf.xml to the $EXPORT folder
-sudo cp job_conf.xml "$EXPORT"/galaxy-central/config/
-sudo chown 1450:1450 "$EXPORT"/galaxy-central/config/job_conf.xml
+sudo cp job_conf.xml "$EXPORT"/galaxy/config/
+sudo chown 1450:1450 "$EXPORT"/galaxy/config/job_conf.xml
 
 docker run -d -e "NONUSE=slurmd,slurmctld" \
    --link slurm --name galaxy-slurm-test -h galaxy \

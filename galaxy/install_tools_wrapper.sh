@@ -28,7 +28,7 @@ else
 
     echo "starting Galaxy"
     # Unset SUDO_* vars otherwise conda run chown based on that
-    sudo -E -u galaxy -- bash -c "unset SUDO_UID; \
+    sudo -E -H -u galaxy -- bash -c "unset SUDO_UID; \
         unset SUDO_GID; \
         unset SUDO_COMMAND; \
         unset SUDO_USER; \
@@ -67,7 +67,7 @@ fi
 if ! pgrep "supervisord" > /dev/null
 then
     # stop everything
-    sudo -E -u galaxy ./run.sh --stop --pidfile galaxy_install.pid
+    sudo -E -H -u galaxy ./run.sh --stop --pidfile galaxy_install.pid
     rm $install_log
     service postgresql stop
 fi

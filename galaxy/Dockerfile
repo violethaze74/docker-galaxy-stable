@@ -21,7 +21,6 @@ ENV GALAXY_ROOT_DIR=/galaxy \
 # Install miniforge and then virtualenv from conda
 FROM build_base AS build_miniforge
 
-RUN mkdir $GALAXY_HOME
 ADD ./bashrc $GALAXY_HOME/.bashrc
 
 RUN curl -s -L https://github.com/conda-forge/miniforge/releases/download/$MINIFORGE_VERSION/Miniforge3-$MINIFORGE_VERSION-Linux-x86_64.sh > ~/miniforge.sh \
@@ -34,6 +33,7 @@ RUN curl -s -L https://github.com/conda-forge/miniforge/releases/download/$MINIF
     && conda config --add channels bioconda \
     && conda install virtualenv pip ephemeris \
     && conda clean --packages -t -i \
+    && cp -r ~/.conda $GALAXY_HOME && cp ~/.condarc $GALAXY_HOME \
     && find $GALAXY_CONDA_PREFIX -name '*.pyc' -delete
 
 
@@ -55,8 +55,8 @@ RUN mkdir $GALAXY_ROOT_DIR $GALAXY_VIRTUAL_ENV \
     && . $GALAXY_VIRTUAL_ENV/bin/activate \
     && pip install "weasyprint>=61.2" watchdog --index-url https://wheels.galaxyproject.org/simple --extra-index-url https://pypi.python.org/simple \
     && deactivate \
-    && cd config && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + \
-    && find . -name '.cache' -type d -prune -exec rm -rf '{}' + \
+    # cleanup
+    && find config \( -name 'node_modules' -o -name '.cache' -o -name '.parcel-cache' \) -type d -prune -exec rm -rf '{}' + \
     && find $GALAXY_ROOT_DIR -name '*.pyc' -delete && find $GALAXY_VIRTUAL_ENV -name '*.pyc' -delete \ 
     && rm -rf $GALAXY_ROOT_DIR/client/node_modules/ $GALAXY_VIRTUAL_ENV/src/
 
@@ -89,7 +89,7 @@ ENV GALAXY_CONFIG_FILE=$GALAXY_CONFIG_DIR/galaxy.yml \
     PG_CONF_DIR_DEFAULT=/etc/postgresql/$PG_VERSION/main/ \
     PG_DATA_DIR_HOST=$EXPORT_DIR/postgresql/$PG_VERSION/main/
 
-ADD ./common_cleanup.sh /usr/bin/common_cleanup.sh
+ADD --chmod=755 ./common_cleanup.sh /usr/bin/common_cleanup.sh
 
 RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/02apt-speedup \
     && echo "Acquire::http {No-Cache=True;};" > /etc/apt/apt.conf.d/no-cache \
@@ -97,7 +97,6 @@ RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/02apt-speedup \
     && apt-get -qq update && apt-get install -y locales \
     && locale-gen en_US.UTF-8 && dpkg-reconfigure locales \
     && apt-get autoremove -y && apt-get clean \
-    && chmod +x /usr/bin/common_cleanup.sh \
     && /usr/bin/common_cleanup.sh
 
 ADD ansible/ /ansible/
@@ -183,7 +182,7 @@ ENV GALAXY_CONFIG_MANAGED_CONFIG_DIR=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/c
     GALAXY_CONFIG_BOOTSTRAP_ADMIN_API_KEY=HSNiugRFvgT574F43jZ7N9F3 \
     GALAXY_CONFIG_BRAND="Galaxy Docker Build" \
     GALAXY_CONFIG_STATIC_ENABLED=False \
-    GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE=$GALAXY_CONFIG_DIR/tools_conf_interactive.xml \
+    GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE=$GALAXY_CONFIG_DIR/tool_conf_interactive.xml \
     # The following ENV var can be used to set the number of gunicorn workers
     GUNICORN_WORKERS=2 \
     # The following ENV var can be used to set the number of celery workers
@@ -204,11 +203,11 @@ COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_galaxy $GALAXY_VIRTUAL_ENV $
 COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniforge $GALAXY_HOME $GALAXY_HOME
 COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniforge /etc/profile.d/conda.sh /etc/profile.d/conda.sh
 
-ADD ./reports.yml.sample $GALAXY_CONFIG_DIR/reports.yml
-ADD sample_tool_list.yaml $GALAXY_HOME/ephemeris/sample_tool_list.yaml
+ADD --chown=$GALAXY_USER:$GALAXY_USER ./reports.yml.sample $GALAXY_CONFIG_DIR/reports.yml
+ADD --chown=$GALAXY_USER:$GALAXY_USER ./sample_tool_list.yaml $GALAXY_HOME/ephemeris/sample_tool_list.yaml
 
 # Activate Interactive Tools during runtime
-ADD ./tools_conf_interactive.xml.sample $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE
+ADD --chown=$GALAXY_USER:$GALAXY_USER ./tool_conf_interactive.xml.sample $GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE
 
 RUN mkdir -p $GALAXY_CONFIG_TUS_UPLOAD_STORE \
     && ln -s /tool_deps/ $GALAXY_CONFIG_TOOL_DEPENDENCY_DIR \
@@ -236,17 +235,14 @@ RUN cd / \
     && service postgresql start \
     && service postgresql stop
 
-# The following commands will be executed as the galaxy user
-USER $GALAXY_USER
-
 WORKDIR $GALAXY_ROOT_DIR
 
 # Updating genome informations from UCSC
-#RUN export GALAXY=$GALAXY_ROOT_DIR && sh ./cron/updateucsc.sh.sample
+# RUN su $GALAXY_USER -c "export GALAXY=$GALAXY_ROOT_DIR && sh ./cron/updateucsc.sh.sample"
 
 ENV GALAXY_CONFIG_JOB_WORKING_DIRECTORY=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/job_working_directory \
     GALAXY_CONFIG_FILE_PATH=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/files \
-    GALAXY_CONFIG_NEW_FILE_PATH=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/files \
+    GALAXY_CONFIG_NEW_FILE_PATH=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/tmp \
     GALAXY_CONFIG_TEMPLATE_CACHE_PATH=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/compiled_templates \
     GALAXY_CONFIG_CITATION_CACHE_DATA_DIR=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/database/citations/data \
     GALAXY_CONFIG_FTP_UPLOAD_DIR=$EXPORT_DIR/ftp \
@@ -262,22 +258,16 @@ ENV GALAXY_CONFIG_JOB_WORKING_DIRECTORY=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/databas
     GALAXY_CONFIG_ENABLE_QUOTAS=True \
     GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL=http://$GALAXY_DOMAIN \
     GALAXY_CONFIG_OUTPUTS_TO_WORKING_DIRECTORY=True \
-    # We need to set $HOME for some Tool Shed tools (e.g Perl libs with $HOME/.cpan)
-    HOME=$GALAXY_HOME \
     GALAXY_CONDA_PREFIX=$GALAXY_CONFIG_TOOL_DEPENDENCY_DIR/_conda
 
 # Container Style
-ADD GalaxyDocker.png $GALAXY_CONFIG_DIR/web/welcome_image.png
-ADD welcome.html $GALAXY_CONFIG_DIR/web/welcome.html
-
-# Switch back to User root
-USER root
+ADD --chown=$GALAXY_USER:$GALAXY_USER GalaxyDocker.png $GALAXY_CONFIG_DIR/web/welcome_image.png
+ADD --chown=$GALAXY_USER:$GALAXY_USER welcome.html $GALAXY_CONFIG_DIR/web/welcome.html
 
 
 # Activate additional Tool Sheds
 # Activate the Test Tool Shed during runtime, useful for testing repositories.
-ADD ./tool_sheds_conf.xml $GALAXY_HOME/tool_sheds_conf.xml
-RUN chown $GALAXY_USER:$GALAXY_USER $GALAXY_HOME/tool_sheds_conf.xml && chmod 0644 $GALAXY_HOME/tool_sheds_conf.xml
+ADD --chown=$GALAXY_USER:$GALAXY_USER ./tool_sheds_conf.xml $GALAXY_HOME/tool_sheds_conf.xml
 
 # Script that enables easier downstream installation of tools (e.g. for different Galaxy Docker flavours)
 ADD install_tools_wrapper.sh /usr/bin/install-tools
@@ -291,13 +281,11 @@ RUN chmod +x /usr/bin/install-tools /usr/bin/install-biojs && \
 ADD https://github.com/krallin/tini/releases/download/v0.18.0/tini /sbin/tini
 RUN chmod +x /sbin/tini
 
-ADD run.sh $GALAXY_ROOT_DIR/run.sh
-RUN chmod +x $GALAXY_ROOT_DIR/run.sh && \
-    chown $GALAXY_USER:$GALAXY_USER $GALAXY_ROOT_DIR/run.sh
+ADD --chown=$GALAXY_USER:$GALAXY_USER --chmod=755 ./run.sh $GALAXY_ROOT_DIR/run.sh
 
 # This needs to happen here and not above, otherwise the Galaxy start
 # (without running the startup.sh script) will crash because integrated_tool_panel.xml could not be found.
-ENV GALAXY_CONFIG_INTEGRATED_TOOL_PANEL_CONFIG $EXPORT_DIR/${GALAXY_ROOT_DIR#/}/integrated_tool_panel.xml
+ENV GALAXY_CONFIG_INTEGRATED_TOOL_PANEL_CONFIG=$EXPORT_DIR/${GALAXY_ROOT_DIR#/}/integrated_tool_panel.xml
 
 # Expose port 80, 443 (webserver), 21 (FTP server), 4002 (Proxy), 9002 (supvisord web app)
 EXPOSE 21

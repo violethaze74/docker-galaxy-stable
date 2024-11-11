@@ -176,7 +176,7 @@ docker run -p 8080:80 -v /data/galaxy-data:/export --name <new_container_name> b
 
 ```sh
 cd /data/galaxy-data/.distribution_config
-for f in *; do echo $f; diff $f ../galaxy-central/config/$f; read; done
+for f in *; do echo $f; diff $f ../galaxy/config/$f; read; done
 ```
 
 4. Upgrade the database schema
@@ -239,19 +239,19 @@ With this method, you keep a backup in case you decide to downgrade, but require
 
   ```
   $ cd /data/galaxy-data/.distribution_config
-  $ for f in *; do echo $f; diff $f ../../galaxy-data-old/galaxy-central/config/$f; read; done
+  $ for f in *; do echo $f; diff $f ../../galaxy-data-old/galaxy/config/$f; read; done
   ```
 8. Copy all the users' datasets to the new instance
 
   ```
-  $ sudo rsync -var /data/galaxy-data-old/galaxy-central/database/files/* /data/galaxy-data/galaxy-central/database/files/
+  $ sudo rsync -var /data/galaxy-data-old/galaxy/database/files/* /data/galaxy-data/galaxy/database/files/
   ```
 9. Copy all the installed tools
 
   ```
   $ sudo rsync -var /data/galaxy-data-old/tool_deps/* /data/galaxy-data/tool_deps/
-  $ sudo rsync -var /data/galaxy-data-old/galaxy-central/database/shed_tools/* /data/galaxy-data/galaxy-central/database/shed_tools/
-  $ sudo rsync -var /data/galaxy-data-old/galaxy-central/database/config/* /data/galaxy-data/galaxy-central/database/config/
+  $ sudo rsync -var /data/galaxy-data-old/galaxy/database/shed_tools/* /data/galaxy-data/galaxy/database/shed_tools/
+  $ sudo rsync -var /data/galaxy-data-old/galaxy/database/config/* /data/galaxy-data/galaxy/database/config/
   ```
 10. Copy the welcome page and all its files.
 
@@ -328,7 +328,7 @@ exit
 
 ```sh
 cd /data/galaxy-data/.distribution_config
-for f in *; do echo $f; diff $f ../galaxy-central/config/$f; read; done
+for f in *; do echo $f; diff $f ../galaxy/config/$f; read; done
 ```
 
 7. Upgrade the database schema (= step 4 of the "The quick upgrade method" above)
@@ -470,11 +470,11 @@ docker run -p 8080:80 \
     bgruening/galaxy-stable
 ```
 
-Note, that if you would like to run any of the [cleanup scripts](https://galaxyproject.org/admin/config/performance/purge-histories-and-datasets/), you will need to add the following to `/export/galaxy-central/config/galaxy.yml`:
+Note, that if you would like to run any of the [cleanup scripts](https://galaxyproject.org/admin/config/performance/purge-histories-and-datasets/), you will need to add the following to `/export/galaxy/config/galaxy.yml`:
 
 ```
 database_connection = postgresql://galaxy:galaxy@localhost:5432/galaxy
-file_path = /export/galaxy-central/database/files
+file_path = /export/galaxy/database/files
 ```
 
 ## Security Configuration
@@ -492,7 +492,7 @@ Additionally Galaxy encodes various internal values that can be part of output u
 id_secret: d5c910cc6e32cad08599987ab64dcfae
 ```
 
-You should change all three configuration variables above manually in `/export/galaxy-central/config/galaxy.yml`.
+You should change all three configuration variables above manually in `/export/galaxy/config/galaxy.yml`.
 
 Alternatively you can pass the security configuration when running the image but please note that it is a security problem. E.g. if a tool exposes all `env`'s your secret API key will also be exposed.
 
@@ -598,47 +598,47 @@ The easiest way is to create a `/export` mount point on the cluster and mount th
 #### Not using the /export mount point on the cluster.
 The docker container sets up all its files on the /export directory, but this directory may not exist on the cluster filesystem. This can be solved with symbolic links on the cluster filesystem but it can also be solved within the container itself.
 
-In this example configuration the cluster file system has a directory `/cluster_storage/galaxy` which is accessible for the galaxy user in the container (UID 1450) and the user starting the container.
+In this example configuration the cluster file system has a directory `/cluster_storage/galaxy_data` which is accessible for the galaxy user in the container (UID 1450) and the user starting the container.
 
 The container should be started with the following settings configured:
 ```bash
 docker run -d -p 8080:80 -p 8021:21 \
--v /cluster_storage/galaxy/galaxy_export:/export \ # This makes sure all galaxy files are on the cluster filesystem
--v /cluster_storage/galaxy:/cluster_storage/galaxy \ # This ensures the links within the docker container and on the cluster fs are the same
+-v /cluster_storage/galaxy_data/galaxy_export:/export \ # This makes sure all galaxy files are on the cluster filesystem
+-v /cluster_storage/galaxy_data:/cluster_storage/galaxy_data \ # This ensures the links within the docker container and on the cluster fs are the same
 # The following settings make sure that each job is configured with the paths on the cluster fs instead of /export
--e GALAXY_CONFIG_TOOL_DEPENDENCY_DIR="/cluster_storage/galaxy/galaxy_export/tool_deps" \
--e GALAXY_CONFIG_TOOL_DEPENDENCY_CACHE_DIR="/cluster_storage/galaxy/galaxy_export/tool_deps/_cache" \
--e GALAXY_CONFIG_FILE_PATH="/cluster_storage/galaxy/galaxy_export/galaxy-central/database/files" \
--e GALAXY_CONFIG_TOOL_PATH="/cluster_storage/galaxy/galaxy_export/galaxy-central/tools" \
--e GALAXY_CONFIG_TOOL_DATA_PATH="/cluster_storage/galaxy/galaxy_export/galaxy-central/tool-data" \
--e GALAXY_CONFIG_SHED_TOOL_DATA_PATH="/cluster_storage/galaxy/galaxy_export/galaxy-central/tool-data" \
+-e GALAXY_CONFIG_TOOL_DEPENDENCY_DIR="/cluster_storage/galaxy_data/galaxy_export/tool_deps" \
+-e GALAXY_CONFIG_TOOL_DEPENDENCY_CACHE_DIR="/cluster_storage/galaxy_data/galaxy_export/tool_deps/_cache" \
+-e GALAXY_CONFIG_FILE_PATH="/cluster_storage/galaxy_data/galaxy_export/galaxy/database/files" \
+-e GALAXY_CONFIG_TOOL_PATH="/cluster_storage/galaxy_data/galaxy_export/galaxy/tools" \
+-e GALAXY_CONFIG_TOOL_DATA_PATH="/cluster_storage/galaxy_data/galaxy_export/galaxy/tool-data" \
+-e GALAXY_CONFIG_SHED_TOOL_DATA_PATH="/cluster_storage/galaxy_data/galaxy_export/galaxy/tool-data" \
 # The following settings are for directories that can be anywhere on the cluster fs.
--e GALAXY_CONFIG_JOB_WORKING_DIRECTORY="/cluster_storage/galaxy/galaxy_export/galaxy-central/database/job_working_directory" \ #IMPORTANT: needs to be created manually. Can also be placed elsewhere, but is originally located here
--e GALAXY_CONFIG_NEW_FILE_PATH="/cluster_storage/galaxy/tmp" \ # IMPORTANT: needs to be created manually. This needs to be writable by UID=1450 and have its flippy bit set (chmod 1777 for world-writable with flippy bit)
+-e GALAXY_CONFIG_JOB_WORKING_DIRECTORY="/cluster_storage/galaxy_data/galaxy_export/galaxy/database/job_working_directory" \ #IMPORTANT: needs to be created manually. Can also be placed elsewhere, but is originally located here
+-e GALAXY_CONFIG_NEW_FILE_PATH="/cluster_storage/galaxy_data/tmp" \ # IMPORTANT: needs to be created manually. This needs to be writable by UID=1450 and have its flippy bit set (chmod 1777 for world-writable with flippy bit)
 -e GALAXY_CONFIG_OUTPUTS_TO_WORKING_DIRECTORY=False \ # Writes Job scripts, stdout and stderr to job_working_directory.   
 -e GALAXY_CONFIG_RETRY_JOB_OUTPUT_COLLECTION=5 \ #IF your cluster fs uses nfs this may introduce latency. You can set galaxy to retry if a job output is not yet created.
 # Conda settings. IMPORTANT!
--e GALAXY_CONFIG_CONDA_PREFIX="/cluster_storage/galaxy/_conda" \ # Can be anywhere EXCEPT cluster_storage/galaxy/galaxy_export!
+-e GALAXY_CONFIG_CONDA_PREFIX="/cluster_storage/galaxy_data/_conda" \ # Can be anywhere EXCEPT cluster_storage/galaxy/galaxy_export!
 # Conda uses $PWD to determine where the virtual environment is. If placed inside the export directory conda will determine $PWD to be a subirectory of the  /export folder which does not exist on the cluster!
 -e GALAXY_CONFIG_CONDA_AUTO_INIT=True # When the necessary environment can not be found a new one will automatically be created
 ```
 ### Setting up a Python virtual environment on the cluster  <a name="Setting-up-a-python-virtual-environment-on-the-cluster" />[[toc]](#toc)
 The Python environment in the container is not accessible from the cluster. So it needs to be created beforehand.
-In this example configuration the Python virtual environment is created on  `/cluster_storage/galaxy/galaxy_venv` and the export folder on `/cluster_storage/galaxy/galaxy_export`. To create the virtual environment:
-1. Create the virtual environment `virtualenv /cluster_storage/galaxy/galaxy_venv`
-2. Activate the virtual environment `source /cluster_storage/galaxy/galaxy_venv/bin/activate`
-3. Install the galaxy requirements `pip install --index-url https://wheels.galaxyproject.org/simple --only-binary all -r /cluster_storage/galaxy/galaxy-central//lib/galaxy/dependencies/pinned-requirements.txt`
+In this example configuration the Python virtual environment is created on  `/cluster_storage/galaxy_data/galaxy_venv` and the export folder on `/cluster_storage/galaxy_data/galaxy_export`. To create the virtual environment:
+1. Create the virtual environment `virtualenv /cluster_storage/galaxy_data/galaxy_venv`
+2. Activate the virtual environment `source /cluster_storage/galaxy_data/galaxy_venv/bin/activate`
+3. Install the galaxy requirements `pip install --index-url https://wheels.galaxyproject.org/simple --only-binary all -r /cluster_storage/galaxy_data/galaxy/lib/galaxy/dependencies/pinned-requirements.txt`
   * Make sure to upgrade the environment with the new requirements when a new version of galaxy is released.
 
-To make the Python environment usable on the cluster, create your custom `job_conf.xml` file and put it in `/cluster_storage/galaxy/galaxy_export/galaxy-central/config`.
+To make the Python environment usable on the cluster, create your custom `job_conf.xml` file and put it in `/cluster_storage/galaxy_data/galaxy_export/galaxy/config`.
 In the destination section the following code should be added:
 ```xml
 <destinations default="cluster">
   <destination id="cluster" runner="your_cluster_runner">
-    <env file="/cluster_storage/galaxy/galaxy_venv/bin/activate"/>
-    <env id="GALAXY_ROOT_DIR">/cluster_storage/galaxy/galaxy_export/galaxy-central</env>
-    <env id="GALAXY_LIB">/cluster_storage/galaxy/galaxy_export/galaxy-central/lib</env>
-    <env id="PYTHONPATH">/cluster_storage/galaxy/galaxy_export/galaxy-central/lib</env>
+    <env file="/cluster_storage/galaxy_data/galaxy_venv/bin/activate"/>
+    <env id="GALAXY_ROOT_DIR">/cluster_storage/galaxy_data/galaxy_export/galaxy</env>
+    <env id="GALAXY_LIB">/cluster_storage/galaxy_data/galaxy_export/galaxy/lib</env>
+    <env id="PYTHONPATH">/cluster_storage/galaxy_data/galaxy_export/galaxy/lib</env>
     <param id="embed_metadata_in_job">True</param>
   </destination>
 ```
@@ -655,7 +655,7 @@ It is often convenient to configure Galaxy to use a high-performance cluster for
 1. munge.key
 2. slurm.conf
 
-These files from the cluster must be copied to the `/export` mount point (i.e., `/cluster_storage/galaxy/galaxy_export/` on the host if using below command) accessible to Galaxy before starting the container. This must be done regardless of which Slurm daemons are running within Docker. At start, symbolic links will be created to these files to `/etc` within the container, allowing the various Slurm functions to communicate properly with your cluster. In such cases, there's no reason to run `slurmctld`, the Slurm controller daemon, from within Docker, so specify `-e "NONUSE=slurmctld"`. Unless you would like to also use Slurm (rather than the local job runner) to run jobs within the Docker container, then alternatively specify `-e "NONUSE=slurmctld,slurmd"`.
+These files from the cluster must be copied to the `/export` mount point (i.e., `/cluster_storage/galaxy_data/galaxy_export/` on the host if using below command) accessible to Galaxy before starting the container. This must be done regardless of which Slurm daemons are running within Docker. At start, symbolic links will be created to these files to `/etc` within the container, allowing the various Slurm functions to communicate properly with your cluster. In such cases, there's no reason to run `slurmctld`, the Slurm controller daemon, from within Docker, so specify `-e "NONUSE=slurmctld"`. Unless you would like to also use Slurm (rather than the local job runner) to run jobs within the Docker container, then alternatively specify `-e "NONUSE=slurmctld,slurmd"`.
 
 Importantly, Slurm relies on a shared filesystem between the Docker container and the execution nodes. To allow things to function correctly, checkout the basic filesystem setup above.
 
@@ -804,7 +804,7 @@ ENV GALAXY_CONFIG_BRAND deepTools
 ENV http_proxy 'http://yourproxyIP:8080'
 ENV https_proxy 'http://yourproxyIP:8080'
 
-WORKDIR /galaxy-central
+WORKDIR /galaxy
 
 RUN add-tool-shed --url 'http://testtoolshed.g2.bx.psu.edu/' --name 'Test Tool Shed'
 
@@ -933,7 +933,7 @@ RabbitMQ is configured with:
 You can clone this repository with:
 
 ```sh
-git clone --recursive https://github.com/bgruening/docker-galaxy-stable.git
+git clone https://github.com/bgruening/docker-galaxy-stable.git
 ```
 
 This repository uses various [Ansible](http://www.ansible.com/) roles as specified in [requirements.yml](galaxy/ansible/requirements.yml) to manage configurations and dependencies. You can install these roles with the following command:
@@ -947,6 +947,12 @@ If you simply want to change the Galaxy repository and/or the Galaxy branch, fro
 ```
  --build-arg GALAXY_RELEASE=install_workflow_and_tools
  --build-arg GALAXY_REPO=https://github.com/manabuishii/galaxy
+```
+
+To keep docker images lean and optimize storage, we recommend using [Dive](https://github.com/wagoodman/dive). It provides an interactive UI that lets you explore each layer of the image, helping you quickly identify files and directories that take up significant space. To install Dive, follow the installation instructions provided in the [Dive GitHub repository](https://github.com/wagoodman/dive?tab=readme-ov-file#installation). After building your docker image, use Dive to analyze it:
+
+```bash
+dive <your-docker-image-name>
 ```
 
 # Requirements <a name="Requirements" /> [[toc]](#toc)

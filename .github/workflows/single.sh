@@ -133,6 +133,28 @@ docker_exec install-tools "$SAMPLE_TOOLS"
 # Test the Conda installation
 docker_exec_run bash -c 'export PATH=$GALAXY_CONFIG_TOOL_DEPENDENCY_DIR/_conda/bin/:$PATH && conda --version && conda install samtools -c bioconda --yes'
 
+# Test if data persistence works
+docker stop galaxy
+docker rm -f galaxy
+
+cd "$WORKING_DIR"
+docker run -d -p 8080:80 \
+    --name galaxy \
+    --privileged=true \
+    -v "$(pwd)/local_folder:/export/" \
+    -e GALAXY_CONFIG_ALLOW_USER_DATASET_PURGE=True \
+    -e GALAXY_CONFIG_ALLOW_PATH_PASTE=True \
+    -e GALAXY_CONFIG_ALLOW_USER_DELETION=True \
+    -e GALAXY_CONFIG_ENABLE_BETA_WORKFLOW_MODULES=True \
+    -v /tmp/:/tmp/ \
+    quay.io/bgruening/galaxy
+
+echo 'Waiting for Galaxy to come up.'
+galaxy-wait -g $BIOBLEND_GALAXY_URL --timeout 600
+
+# Test if the tool installed previously is available
+curl -v --fail 'http://localhost:8080/api/tools/toolshed.g2.bx.psu.edu/repos/devteam/cut_columns/Cut1/1.0.2'
+
 # analyze image using dive tool
 CI=true dive quay.io/bgruening/galaxy
 

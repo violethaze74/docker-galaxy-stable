@@ -319,15 +319,6 @@ function start_supervisor {
         fi
     fi
 
-    wait_for_postgres
-
-    # Make sure the database is automatically updated
-    if [[ ! -z $GALAXY_AUTO_UPDATE_DB ]]
-    then
-        echo "Updating Galaxy database"
-        sh manage_db.sh -c $GALAXY_CONFIG_FILE upgrade
-    fi
-
     if [[ ! -z $SUPERVISOR_MANAGE_CRON ]]; then
         if [[ $NONUSE != *"cron"* ]]
         then
@@ -496,16 +487,16 @@ if $PRIVILEGED; then
     if [[ -z $DOCKER_PARENT ]]; then
         #build the docker in docker environment
         bash /root/cgroupfs_mount.sh
-        start_gravity
         start_supervisor
+        start_gravity
         supervisorctl start docker
         wait_for_docker
     else
         #inheriting /var/run/docker.sock from parent, assume that you need to
         #run docker with sudo to validate
         echo "$GALAXY_USER ALL = NOPASSWD : ALL" >> /etc/sudoers
-        start_gravity
         start_supervisor
+        start_gravity
     fi
     if  [[ ! -z $PULL_IT_IMAGES ]]; then
         echo "About to pull IT images. Depending on the size, this may take a while!"
@@ -523,8 +514,17 @@ if $PRIVILEGED; then
 else
     echo "Disable Galaxy Interactive Tools. Start with --privileged to enable ITs."
     export GALAXY_CONFIG_INTERACTIVETOOLS_ENABLE=False
-    start_gravity
     start_supervisor
+    start_gravity
+fi
+
+wait_for_postgres
+
+# Make sure the database is automatically updated
+if [[ ! -z $GALAXY_AUTO_UPDATE_DB ]]
+then
+    echo "Updating Galaxy database"
+    sh manage_db.sh -c $GALAXY_CONFIG_FILE upgrade
 fi
 
 # In case the user wants the default admin to be created, do so.

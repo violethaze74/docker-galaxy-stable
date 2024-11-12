@@ -12,13 +12,17 @@ sudo apt-get update -qq
 #sudo apt-get install docker-ce --no-install-recommends -y -o Dpkg::Options::="--force-confmiss" -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew"
 sudo apt-get install sshpass --no-install-recommends -y
 
+DIVE_VERSION=$(curl -sL "https://api.github.com/repos/wagoodman/dive/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+curl -OL https://github.com/wagoodman/dive/releases/download/v${DIVE_VERSION}/dive_${DIVE_VERSION}_linux_amd64.deb
+sudo apt install ./dive_${DIVE_VERSION}_linux_amd64.deb
+rm ./dive_${DIVE_VERSION}_linux_amd64.deb
+
 pip3 install ephemeris
 
 docker --version
 docker info
 
 # start building this repo
-git submodule update --init --recursive
 sudo chown 1450 /tmp && sudo chmod a=rwx /tmp
 
 ## define a container size check function, first parameter is the container name, second the max allowed size in MB
@@ -50,8 +54,8 @@ docker run -d -p 8080:80 -p 8021:21 -p 8022:22 \
     --privileged=true \
     -v "$(pwd)/local_folder:/export/" \
     -e GALAXY_CONFIG_ALLOW_USER_DATASET_PURGE=True \
-    -e GALAXY_CONFIG_ALLOW_LIBRARY_PATH_PASTE=True \
-    -e GALAXY_CONFIG_ENABLE_USER_DELETION=True \
+    -e GALAXY_CONFIG_ALLOW_PATH_PASTE=True \
+    -e GALAXY_CONFIG_ALLOW_USER_DELETION=True \
     -e GALAXY_CONFIG_ENABLE_BETA_WORKFLOW_MODULES=True \
     -v /tmp/:/tmp/ \
     quay.io/bgruening/galaxy
@@ -82,15 +86,15 @@ cd "${WORKING_DIR}/test/slurm/" && bash test.sh && cd "$WORKING_DIR"
 # - cd $WORKING_DIR/test/gridengine/ && bash test.sh && cd $WORKING_DIR
 
 echo 'Waiting for Galaxy to come up.'
-galaxy-wait -g $BIOBLEND_GALAXY_URL --timeout 300
+galaxy-wait -g $BIOBLEND_GALAXY_URL --timeout 600
 
 curl -v --fail $BIOBLEND_GALAXY_URL/api/version
 
 # Test self-signed HTTPS
 docker_run -d --name httpstest -p 443:443 -e "USE_HTTPS=True" $DOCKER_RUN_CONTAINER
-# TODO 19.05
-# - sleep 90s && curl -v -k --fail https://127.0.0.1:443/api/version
-#- echo | openssl s_client -connect 127.0.0.1:443 2>/dev/null | openssl x509 -issuer -noout| grep selfsigned
+
+sleep 180s && curl -v -k --fail https://127.0.0.1:443/api/version
+echo | openssl s_client -connect 127.0.0.1:443 2>/dev/null | openssl x509 -issuer -noout| grep localhost
 
 docker logs httpstest && docker stop httpstest && docker rm httpstest
 
@@ -101,31 +105,27 @@ date > time.txt
 # Test FTP Server get
 #curl -v --fail ftp://localhost:8021 --user $GALAXY_USER:$GALAXY_USER_PASSWD
 
+# Test SFTP Server
+sshpass -p $GALAXY_USER_PASSWD sftp -v -P 8022 -o User=$GALAXY_USER -o "StrictHostKeyChecking no" localhost <<< $'put time.txt'
+
 # Test CVMFS
 docker_exec bash -c "service autofs start"
 docker_exec bash -c "cvmfs_config chksetup"
 docker_exec bash -c "ls /cvmfs/data.galaxyproject.org/byhand"
 
-# Test SFTP Server
-sshpass -p $GALAXY_USER_PASSWD sftp -v -P 8022 -o User=$GALAXY_USER -o "StrictHostKeyChecking no" localhost <<< $'put time.txt'
-
 # Run a ton of BioBlend test against our servers.
 cd "$WORKING_DIR/test/bioblend/" && . ./test.sh && cd "$WORKING_DIR/"
 
-# not working anymore in 18.01
-# executing: /galaxy_venv/bin/uwsgi --yaml /etc/galaxy/galaxy.yml --master --daemonize2 galaxy.log --pidfile2 galaxy.pid  --log-file=galaxy_install.log --pid-file=galaxy_install.pid
-# [uWSGI] getting YAML configuration from /etc/galaxy/galaxy.yml
-# /galaxy_venv/bin/python: unrecognized option '--log-file=galaxy_install.log'
-# getopt_long() error
-# cat: galaxy_install.pid: No such file or directory
-# tail: cannot open ‘galaxy_install.log’ for reading: No such file or directory
-#- |
-#  if [ "${COMPOSE_SLURM}" ] || [ "${KUBE}" ] || [ "${COMPOSE_CONDOR_DOCKER}" ] || [ "${COMPOSE_SLURM_SINGULARITY}" ]
-#  then
-#    # Test without install-repository wrapper
-#      sleep 10
-#      docker_exec_run bash -c 'cd $GALAXY_ROOT && python ./scripts/api/install_tool_shed_repositories.py --api admin -l http://localhost:80 --url https://toolshed.g2.bx.psu.edu -o devteam --name cut_columns --panel-section-name BEDTools'
-#  fi
+# Test without install-repository wrapper
+curl -v --fail POST -H "Content-Type: application/json" -H "x-api-key: fakekey" -d \
+    '{
+        "tool_shed_url": "https://toolshed.g2.bx.psu.edu",
+        "name": "cut_columns",
+        "owner": "devteam",
+        "changeset_revision": "cec635fab700",
+        "new_tool_panel_section_label": "BEDTools"
+    }' \
+"http://localhost:8080/api/tool_shed_repositories"
 
 
 # Test the 'new' tool installation script
@@ -133,6 +133,30 @@ docker_exec install-tools "$SAMPLE_TOOLS"
 # Test the Conda installation
 docker_exec_run bash -c 'export PATH=$GALAXY_CONFIG_TOOL_DEPENDENCY_DIR/_conda/bin/:$PATH && conda --version && conda install samtools -c bioconda --yes'
 
+# Test if data persistence works
+docker stop galaxy
+docker rm -f galaxy
+
+cd "$WORKING_DIR"
+docker run -d -p 8080:80 \
+    --name galaxy \
+    --privileged=true \
+    -v "$(pwd)/local_folder:/export/" \
+    -e GALAXY_CONFIG_ALLOW_USER_DATASET_PURGE=True \
+    -e GALAXY_CONFIG_ALLOW_PATH_PASTE=True \
+    -e GALAXY_CONFIG_ALLOW_USER_DELETION=True \
+    -e GALAXY_CONFIG_ENABLE_BETA_WORKFLOW_MODULES=True \
+    -v /tmp/:/tmp/ \
+    quay.io/bgruening/galaxy
+
+echo 'Waiting for Galaxy to come up.'
+galaxy-wait -g $BIOBLEND_GALAXY_URL --timeout 600
+
+# Test if the tool installed previously is available
+curl -v --fail 'http://localhost:8080/api/tools/toolshed.g2.bx.psu.edu/repos/devteam/cut_columns/Cut1/1.0.2'
+
+# analyze image using dive tool
+CI=true dive quay.io/bgruening/galaxy
 
 docker stop galaxy
 docker rm -f galaxy

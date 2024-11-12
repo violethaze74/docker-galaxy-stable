@@ -14,7 +14,7 @@ One of the main goals is to make the access to entire tool suites as easy as pos
 this includes the setup of a public available web-service that needs to be maintained, or that the Tool-user needs to either setup a Galaxy Server by its own or to have Admin access to a local Galaxy server.
 With docker, tool developers can create their own Image with all dependencies and the user only needs to run it within docker.
 
-The Image is based on [Ubuntu 14.04 LTS](http://releases.ubuntu.com/14.04/) and all recommended Galaxy requirements are installed. The following chart should illustrate the [Docker](http://www.docker.io) image hierarchy we have build to make is as easy as possible to build on different layers of our stack and create many exciting Galaxy flavors.
+The Image is based on [Ubuntu 22.04 LTS](http://releases.ubuntu.com/22.04/) and all recommended Galaxy requirements are installed. The following chart should illustrate the [Docker](http://www.docker.io) image hierarchy we have build to make is as easy as possible to build on different layers of our stack and create many exciting Galaxy flavors.
 
 ![Docker hierarchy](https://raw.githubusercontent.com/bgruening/docker-galaxy-stable/master/chart.png)
 
@@ -39,10 +39,12 @@ In short, with 19.05:
 - [Usage](#Usage)
   - [Upgrading images](#Upgrading-images)
     - [PostgreSQL migration](#Postgresql-migration)
-  - [Enabling Interactive Environments in Galaxy](#Enabling-Interactive-Environments-in-Galaxy)
+  - [Enabling Interactive Tools in Galaxy](#Enabling-Interactive-Tools-in-Galaxy)
   - [Using passive mode FTP or SFTP](#Using-passive-mode-FTP-or-SFTP)
   - [Using Parent docker](#Using-Parent-docker)
   - [Galaxy Report Webapp](#Galaxy-Report-Webapp)
+  - [RabbitMQ Management](#RabbitMQ-Management)
+  - [Flower Webapp](#Flower-Webapp)
   - [Galaxy's config settings](#Galaxys-config-settings)
   - [Configuring Galaxy's behind a proxy](#Galaxy-behind-proxy)
   - [On-demand reference data with CVMFS](#cvmfs)
@@ -174,21 +176,21 @@ docker run -p 8080:80 -v /data/galaxy-data:/export --name <new_container_name> b
 
 ```sh
 cd /data/galaxy-data/.distribution_config
-for f in *; do echo $f; diff $f ../galaxy-central/config/$f; read; done
+for f in *; do echo $f; diff $f ../galaxy/config/$f; read; done
 ```
 
 4. Upgrade the database schema
 
 ```sh
 docker exec -it <new_container_name> bash
-supervisorctl stop galaxy:
+galaxyctl stop
 sh manage_db.sh upgrade
 exit
 ```
 5. Restart Galaxy
 
 ```sh
-docker exec -it <new_container_name> supervisorctl start galaxy:
+docker exec -it <new_container_name> galaxyctl start
 ```
 
 (Alternatively, restart the whole container)
@@ -237,19 +239,19 @@ With this method, you keep a backup in case you decide to downgrade, but require
 
   ```
   $ cd /data/galaxy-data/.distribution_config
-  $ for f in *; do echo $f; diff $f ../../galaxy-data-old/galaxy-central/config/$f; read; done
+  $ for f in *; do echo $f; diff $f ../../galaxy-data-old/galaxy/config/$f; read; done
   ```
 8. Copy all the users' datasets to the new instance
 
   ```
-  $ sudo rsync -var /data/galaxy-data-old/galaxy-central/database/files/* /data/galaxy-data/galaxy-central/da
-  tabase/files/
+  $ sudo rsync -var /data/galaxy-data-old/galaxy/database/files/* /data/galaxy-data/galaxy/database/files/
   ```
 9. Copy all the installed tools
 
   ```
   $ sudo rsync -var /data/galaxy-data-old/tool_deps/* /data/galaxy-data/tool_deps/
-  $ sudo rsync -var /data/galaxy-data-old/shed_tools/* /data/galaxy-data/shed_tools/
+  $ sudo rsync -var /data/galaxy-data-old/galaxy/database/shed_tools/* /data/galaxy-data/galaxy/database/shed_tools/
+  $ sudo rsync -var /data/galaxy-data-old/galaxy/database/config/* /data/galaxy-data/galaxy/database/config/
   ```
 10. Copy the welcome page and all its files.
 
@@ -283,7 +285,7 @@ You can do it the following way (based on the "The quick upgrade method" above):
 1. Stop Galaxy in the old container
 
 ```sh
-docker exec -it <old_container_name> supervisorctl stop galaxy:
+docker exec -it <old_container_name> galaxyctl stop
 ```
 
 2. Dump the old database
@@ -315,7 +317,7 @@ Wait for the startup process to finish (Galaxy should be accessible)
 
 ```sh
 docker exec -it <new_container_name> bash
-supervisorctl stop galaxy:
+galaxyctl stop
 su postgres
 psql -f /export/postgresql/9.3dump.sql postgres
 exit
@@ -326,14 +328,14 @@ exit
 
 ```sh
 cd /data/galaxy-data/.distribution_config
-for f in *; do echo $f; diff $f ../galaxy-central/config/$f; read; done
+for f in *; do echo $f; diff $f ../galaxy/config/$f; read; done
 ```
 
 7. Upgrade the database schema (= step 4 of the "The quick upgrade method" above)
 
 ```sh
 docker exec -it <new_container_name> bash
-supervisorctl stop galaxy:
+galaxyctl stop
 sh manage_db.sh upgrade
 exit
 ```
@@ -341,7 +343,7 @@ exit
 5. Restart Galaxy (= step 5 of the "The quick upgrade method" above)
 
 ```sh
-docker exec -it <new_container_name> supervisorctl start galaxy:
+docker exec -it <new_container_name> galaxyctl start
 ```
 
 (Alternatively, restart the whole container)
@@ -350,20 +352,33 @@ docker exec -it <new_container_name> supervisorctl start galaxy:
 
 If you are *very* sure that everything went well, you can delete `/export/postgresql/9.3dump.sql` and `/export/postgresql/9.3/` to save some space.
 
-## Enabling Interactive Environments in Galaxy <a name="Enabling-Interactive-Environments-in-Galaxy" /> [[toc]](#toc)
+## Enabling Interactive Tools in Galaxy <a name="Enabling-Interactive-Tools-in-Galaxy" /> [[toc]](#toc)
 
-Interactive Environments (IE) are sophisticated ways to extend Galaxy with powerful services, like [Jupyter](http://jupyter.org/), in a secure and reproducible way.
+Interactive Tools (IT) are sophisticated ways to extend Galaxy with powerful services, like [Jupyter](http://jupyter.org/), in a secure and reproducible way.
 
-For this we need to be able to launch Docker containers inside our Galaxy Docker container. At least docker 1.3 is needed on the host system.
+For this we need to be able to launch Docker containers inside our Galaxy Docker container.
 
 ```sh
-docker run -d -p 8080:80 -p 8021:21 -p 8800:8800 \
+docker run -d -p 8080:80 -p 8021:21 -p 4002:4002 \
     --privileged=true \
     -v /home/user/galaxy_storage/:/export/ \
     bgruening/galaxy-stable
 ```
 
-The port 8800 is the proxy port that is used to handle Interactive Environments. `--privileged` is needed to start docker containers inside docker. If your IE does not open, please make sure you open your Galaxy instance with your hostname or a [FQDN](https://en.wikipedia.org/wiki/Fully_qualified_domain_name), but not with localhost or 127.0.0.1.
+The port 4002 is the proxy port that is used to handle Interactive Tools. `--privileged` is needed to start docker containers inside docker.
+
+Additionally, you can set the `GALAXY_DOMAIN` environment variable to specify the domain name for your Galaxy instance to ensure that domain-based ITs work correctly. By default, it is set to `localhost`. If you have your own domain, you can specify it instead.
+
+If you're using the default job configuration, set the `GALAXY_DESTINATIONS_DEFAULT` environment variable to a Docker-enabled destination. By default, this is set to `slurm_cluster`, so you'll need to update it accordingly. Alternatively, you can also provide your own job configuration file. 
+
+```sh
+docker run -d -p 8080:80 -p 8021:21 -p 4002:4002 \
+    --privileged=true \
+    -v /home/user/galaxy_storage/:/export/ \
+    -e "GALAXY_DOMAIN=your.domain.com" \
+    -e "GALAXY_DESTINATIONS_DEFAULT=slurm_cluster_docker" \
+    bgruening/galaxy-stable
+```
 
 
 ## Using passive mode FTP or SFTP <a name="Using-passive-mode-FTP-or-SFTP" /> [[toc]](#toc)
@@ -399,7 +414,7 @@ sftp -v -P 8022 -o User=admin@galaxy.org localhost <<< $'put <YOUR FILE HERE>'
 On some linux distributions, Docker-In-Docker can run into issues (such as running out of loopback interfaces). If this is an issue, you can use a 'legacy' mode that use a docker socket for the parent docker installation mounted inside the container. To engage, set the environmental variable `DOCKER_PARENT`
 
 ```sh
-docker run -p 8080:80 -p 8021:21 -p 8800:8800 \
+docker run -p 8080:80 -p 8021:21 \
     --privileged=true -e DOCKER_PARENT=True \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /home/user/galaxy_storage/:/export/ \
@@ -408,7 +423,7 @@ docker run -p 8080:80 -p 8021:21 -p 8800:8800 \
 
 ## Galaxy Report Webapp <a name="Galaxy-Report-Webapp" /> [[toc]](#toc)
 
-For admins wishing to have more information on the status of a galaxy instance, the Galaxy Report Webapp is served on `http://localhost:8080/reports`. As default this site is password protected with `admin:admin`. You can change this by providing a `reports_htpasswd` file in `/home/user/galaxy_storage/`.
+For admins wishing to have more information on the status of a galaxy instance, the Galaxy Report Webapp is served on `http://localhost:8080/reports`. As default this site is password protected with `admin:admin`. You can change this by providing a `common_htpasswd` file in `/home/user/galaxy_storage/`.
 
 You can disable the Report Webapp entirely by providing the environment variable `NONUSE` during container startup.
 
@@ -418,9 +433,33 @@ docker run -p 8080:80 \
     bgruening/galaxy-stable
 ```
 
+## RabbitMQ Management <a name="RabbitMQ-Management" /> [[toc]](#toc)
+
+RabbitMQ is used as the broker for services like Celery. RabbitMQ provides a dedicated web interface for managing message queues, accessible at `http://localhost:8080/rabbitmq/`. This interface allows you to monitor queues, exchanges, bindings, and more. By default, it is password protected with `admin:admin`, but the credentials can be changed after logging in.
+
+To completely disable RabbitMQ, you can set the `NONUSE` environment variable during container startup.
+
+```sh
+docker run -p 8080:80 \
+    -e "NONUSE=rabbitmq" \
+    bgruening/galaxy-stable
+```
+
+## Flower Webapp <a name="Flower-Webapp" /> [[toc]](#toc)
+
+Flower is a web-based tool for monitoring and administering Celery. It is accessible at `http://localhost:8080/flower`. By default, this site is password protected with `admin:admin`. You can change this by providing a `common_htpasswd` file in `/home/user/galaxy_storage/`.
+
+The Flower Webapp will only be available if both Celery and RabbitMQ are enabled, meaning the environment variable `NONUSE` does not include `celery` and `rabbitmq`. To completely disable the Flower Webapp, you can set the `NONUSE` environment variable during container startup.
+
+```sh
+docker run -p 8080:80 \
+    -e "NONUSE=flower" \
+    bgruening/galaxy-stable
+```
+
 ## Galaxy's config settings <a name="Galaxys-config-settings" /> [[toc]](#toc)
 
-Every Galaxy configuration parameter in `config/galaxy.ini` can be overwritten by passing an environment variable to the `docker run` command during startup. The name of the environment variable has to be:
+Every Galaxy configuration parameter in `config/galaxy.yml` can be overwritten by passing an environment variable to the `docker run` command during startup. The name of the environment variable has to be:
 `GALAXY_CONFIG`+ *the_original_parameter_name_in_capital_letters*
 For example, you can set the Galaxy session timeout to 5 minutes and set your own Galaxy brand by invoking the `docker run` like this:
 
@@ -431,20 +470,20 @@ docker run -p 8080:80 \
     bgruening/galaxy-stable
 ```
 
-Note, that if you would like to run any of the [cleanup scripts](https://wiki.galaxyproject.org/Admin/Config/Performance/Purge%20Histories%20and%20Datasets), you will need to add the following to `/export/galaxy-central/config/galaxy.yml`:
+Note, that if you would like to run any of the [cleanup scripts](https://galaxyproject.org/admin/config/performance/purge-histories-and-datasets/), you will need to add the following to `/export/galaxy/config/galaxy.yml`:
 
 ```
 database_connection = postgresql://galaxy:galaxy@localhost:5432/galaxy
-file_path = /export/galaxy-central/database/files
+file_path = /export/galaxy/database/files
 ```
 
 ## Security Configuration
 
-*By default* the `admin_users` and `master_api_key` variables are set to:
+*By default* the `admin_users` and `bootstrap_admin_api_key` variables are set to:
 
 ```
 admin_users: admin@galaxy.org
-master_api_key: HSNiugRFvgT574F43jZ7N9F3
+bootstrap_admin_api_key: HSNiugRFvgT574F43jZ7N9F3
 ```
 
 Additionally Galaxy encodes various internal values that can be part of output using secret string configurable as `id_secret` in the config file (use 5-65 bytes long string). This prevents 'guessing' of Galaxy's internal database sequences. Example:
@@ -453,7 +492,7 @@ Additionally Galaxy encodes various internal values that can be part of output u
 id_secret: d5c910cc6e32cad08599987ab64dcfae
 ```
 
-You should change all three configuration variables above manually in `/export/galaxy-central/config/galaxy.yml`.
+You should change all three configuration variables above manually in `/export/galaxy/config/galaxy.yml`.
 
 Alternatively you can pass the security configuration when running the image but please note that it is a security problem. E.g. if a tool exposes all `env`'s your secret API key will also be exposed.
 
@@ -474,10 +513,9 @@ docker run -p 8080:80 \
 ```
 
 ## On-demand reference data with CVMFS <a name="cvmfs" /> [[toc]](#toc)
-By default, Galaxy instances launched with this image will have on-demand access to approximately 3TB of
+By default, Galaxy instances launched with this image will have on-demand access to approximately 4TB of
 reference genomes and indexes. These are the same reference data available on the main Galaxy server.
-This is achieved by connecting to Galaxy's CernVM filesystem (CVMFS) at `data.galaxyproject.org` repository,
-which is geographically distributed among numerous servers.
+This is achieved by connecting to Galaxy's CernVM filesystem (CVMFS) at `cvmfs-config.galaxyproject.org` repository, which provides automatic configuration for all galaxyproject.org CVMFS repositories, including `data.galaxyproject.org`, and ensures they remain up to date.
 The CVMFS capability doesn't add to the size of the Docker image, but when running, CVMFS maintains
 a cache to keep the most recently used data on the local disk.
 
@@ -491,11 +529,11 @@ The Galaxy welcome screen can be changed by providing a `welcome.html` page in `
 
 ## Deactivating services <a name="Deactivating-services" /> [[toc]](#toc)
 
-Non-essential services can be deactivated during startup. Set the environment variable `NONUSE` to a comma separated list of services. Currently, `nodejs`, `postgres`, `proftp`, `reports`, `slurmd` and `slurmctld` are supported.
+Non-essential services can be deactivated during startup. Set the environment variable `NONUSE` to a comma separated list of services. Currently, `postgres`, `cron`, `proftp`, `reports`, `nodejs`, `condor`, `slurmd`, `slurmctld`, `celery`, `rabbitmq`, `redis`, `flower` and `tusd` are supported.
 
 ```sh
 docker run -d -p 8080:80 -p 9002:9002 \
-    -e "NONUSE=nodejs,proftp,reports,slurmd,slurmctld" \
+    -e "NONUSE=cron,proftp,reports,nodejs,condor,slurmd,slurmctld,celery,rabbitmq,redis,flower,tusd" \
     bgruening/galaxy-stable
 ```
 
@@ -507,7 +545,7 @@ A graphical user interface, to start and stop your services, is available on por
 If you want to restart Galaxy without restarting the entire Galaxy container you can use `docker exec` (docker > 1.3).
 
 ```sh
-docker exec <container name> supervisorctl restart galaxy:
+docker exec <container name> galaxyctl restart
 ```
 
 In addition you can start/stop every supervisord process using a web interface on port `9002`. Start your container with:
@@ -560,48 +598,47 @@ The easiest way is to create a `/export` mount point on the cluster and mount th
 #### Not using the /export mount point on the cluster.
 The docker container sets up all its files on the /export directory, but this directory may not exist on the cluster filesystem. This can be solved with symbolic links on the cluster filesystem but it can also be solved within the container itself.
 
-In this example configuration the cluster file system has a directory `/cluster_storage/galaxy` which is accessible for the galaxy user in the container (UID 1450) and the user starting the container.
+In this example configuration the cluster file system has a directory `/cluster_storage/galaxy_data` which is accessible for the galaxy user in the container (UID 1450) and the user starting the container.
 
 The container should be started with the following settings configured:
 ```bash
 docker run -d -p 8080:80 -p 8021:21 \
--v /cluster_storage/galaxy/galaxy_export:/export \ # This makes sure all galaxy files are on the cluster filesystem
--v /cluster_storage/galaxy:/cluster_storage/galaxy \ # This ensures the links within the docker container and on the cluster fs are the same
+-v /cluster_storage/galaxy_data/galaxy_export:/export \ # This makes sure all galaxy files are on the cluster filesystem
+-v /cluster_storage/galaxy_data:/cluster_storage/galaxy_data \ # This ensures the links within the docker container and on the cluster fs are the same
 # The following settings make sure that each job is configured with the paths on the cluster fs instead of /export
--e GALAXY_CONFIG_TOOL_DEPENDENCY_DIR="/cluster_storage/galaxy/galaxy_export/tool_deps" \
--e GALAXY_CONFIG_TOOL_DEPENDENCY_CACHE_DIR="/cluster_storage/galaxy/galaxy_export/tool_deps/_cache" \
--e GALAXY_CONFIG_FILE_PATH="/cluster_storage/galaxy/galaxy_export/galaxy-central/database/files" \
--e GALAXY_CONFIG_TOOL_PATH="/cluster_storage/galaxy/galaxy_export/galaxy-central/tools" \
--e GALAXY_CONFIG_TOOL_DATA_PATH="/cluster_storage/galaxy/galaxy_export/galaxy-central/tool-data" \
--e GALAXY_CONFIG_SHED_TOOL_DATA_PATH="/cluster_storage/galaxy/galaxy_export/galaxy-central/tool-data" \
+-e GALAXY_CONFIG_TOOL_DEPENDENCY_DIR="/cluster_storage/galaxy_data/galaxy_export/tool_deps" \
+-e GALAXY_CONFIG_TOOL_DEPENDENCY_CACHE_DIR="/cluster_storage/galaxy_data/galaxy_export/tool_deps/_cache" \
+-e GALAXY_CONFIG_FILE_PATH="/cluster_storage/galaxy_data/galaxy_export/galaxy/database/files" \
+-e GALAXY_CONFIG_TOOL_PATH="/cluster_storage/galaxy_data/galaxy_export/galaxy/tools" \
+-e GALAXY_CONFIG_TOOL_DATA_PATH="/cluster_storage/galaxy_data/galaxy_export/galaxy/tool-data" \
+-e GALAXY_CONFIG_SHED_TOOL_DATA_PATH="/cluster_storage/galaxy_data/galaxy_export/galaxy/tool-data" \
 # The following settings are for directories that can be anywhere on the cluster fs.
-GALAXY_CONFIG_JOB_WORKING_DIRECTORY="/cluster_storage/galaxy/galaxy_export/galaxy-central/database/job_working_directory" \ #IMPORTANT: needs to be created manually. Can also be placed elsewhere, but is originally located here
--e GALAXY_CONFIG_NEW_FILE_PATH="/cluster_storage/galaxy/tmp" \ # IMPORTANT: needs to be created manually. This needs to be writable by UID=1450 and have its flippy bit set (chmod 1777 for world-writable with flippy bit)
--e GALAXY_CONFIG_CLUSTER_FILES_DIRECTORY="/cluster_storage/galaxy/job_scripts" \ # Job scripts and stdout and stderr will be written here.
+-e GALAXY_CONFIG_JOB_WORKING_DIRECTORY="/cluster_storage/galaxy_data/galaxy_export/galaxy/database/job_working_directory" \ #IMPORTANT: needs to be created manually. Can also be placed elsewhere, but is originally located here
+-e GALAXY_CONFIG_NEW_FILE_PATH="/cluster_storage/galaxy_data/tmp" \ # IMPORTANT: needs to be created manually. This needs to be writable by UID=1450 and have its flippy bit set (chmod 1777 for world-writable with flippy bit)
 -e GALAXY_CONFIG_OUTPUTS_TO_WORKING_DIRECTORY=False \ # Writes Job scripts, stdout and stderr to job_working_directory.   
 -e GALAXY_CONFIG_RETRY_JOB_OUTPUT_COLLECTION=5 \ #IF your cluster fs uses nfs this may introduce latency. You can set galaxy to retry if a job output is not yet created.
 # Conda settings. IMPORTANT!
--e GALAXY_CONFIG_CONDA_PREFIX="/cluster_storage/galaxy/_conda" \ # Can be anywhere EXCEPT cluster_storage/galaxy/galaxy_export!
+-e GALAXY_CONFIG_CONDA_PREFIX="/cluster_storage/galaxy_data/_conda" \ # Can be anywhere EXCEPT cluster_storage/galaxy/galaxy_export!
 # Conda uses $PWD to determine where the virtual environment is. If placed inside the export directory conda will determine $PWD to be a subirectory of the  /export folder which does not exist on the cluster!
 -e GALAXY_CONFIG_CONDA_AUTO_INIT=True # When the necessary environment can not be found a new one will automatically be created
 ```
 ### Setting up a Python virtual environment on the cluster  <a name="Setting-up-a-python-virtual-environment-on-the-cluster" />[[toc]](#toc)
 The Python environment in the container is not accessible from the cluster. So it needs to be created beforehand.
-In this example configuration the Python virtual environment is created on  `/cluster_storage/galaxy/galaxy_venv` and the export folder on `/cluster_storage/galaxy/galaxy_export`. To create the virtual environment:
-1. Create the virtual environment `virtualenv /cluster_storage/galaxy/galaxy_venv`
-2. Activate the virtual environment `source /cluster_storage/galaxy/galaxy_venv/bin/activate`
-3. Install the galaxy requirements `pip install --index-url https://wheels.galaxyproject.org/simple --only-binary all -r /cluster_storage/galaxy/galaxy-central//lib/galaxy/dependencies/pinned-requirements.txt`
+In this example configuration the Python virtual environment is created on  `/cluster_storage/galaxy_data/galaxy_venv` and the export folder on `/cluster_storage/galaxy_data/galaxy_export`. To create the virtual environment:
+1. Create the virtual environment `virtualenv /cluster_storage/galaxy_data/galaxy_venv`
+2. Activate the virtual environment `source /cluster_storage/galaxy_data/galaxy_venv/bin/activate`
+3. Install the galaxy requirements `pip install --index-url https://wheels.galaxyproject.org/simple --only-binary all -r /cluster_storage/galaxy_data/galaxy/lib/galaxy/dependencies/pinned-requirements.txt`
   * Make sure to upgrade the environment with the new requirements when a new version of galaxy is released.
 
-To make the Python environment usable on the cluster, create your custom `job_conf.xml` file and put it in `/cluster_storage/galaxy/galaxy_export/galaxy-central/config`.
+To make the Python environment usable on the cluster, create your custom `job_conf.xml` file and put it in `/cluster_storage/galaxy_data/galaxy_export/galaxy/config`.
 In the destination section the following code should be added:
 ```xml
 <destinations default="cluster">
   <destination id="cluster" runner="your_cluster_runner">
-    <env file="/cluster_storage/galaxy/galaxy_venv/bin/activate"/>
-    <env id="GALAXY_ROOT_DIR">/cluster_storage/galaxy/galaxy_export/galaxy-central</env>
-    <env id="GALAXY_LIB">/cluster_storage/galaxy/galaxy_export/galaxy-central/lib</env>
-    <env id="PYTHONPATH">/cluster_storage/galaxy/galaxy_export/galaxy-central/lib</env>
+    <env file="/cluster_storage/galaxy_data/galaxy_venv/bin/activate"/>
+    <env id="GALAXY_ROOT_DIR">/cluster_storage/galaxy_data/galaxy_export/galaxy</env>
+    <env id="GALAXY_LIB">/cluster_storage/galaxy_data/galaxy_export/galaxy/lib</env>
+    <env id="PYTHONPATH">/cluster_storage/galaxy_data/galaxy_export/galaxy/lib</env>
     <param id="embed_metadata_in_job">True</param>
   </destination>
 ```
@@ -618,7 +655,7 @@ It is often convenient to configure Galaxy to use a high-performance cluster for
 1. munge.key
 2. slurm.conf
 
-These files from the cluster must be copied to the `/export` mount point (i.e., `/cluster_storage/galaxy/galaxy_export/` on the host if using below command) accessible to Galaxy before starting the container. This must be done regardless of which Slurm daemons are running within Docker. At start, symbolic links will be created to these files to `/etc` within the container, allowing the various Slurm functions to communicate properly with your cluster. In such cases, there's no reason to run `slurmctld`, the Slurm controller daemon, from within Docker, so specify `-e "NONUSE=slurmctld"`. Unless you would like to also use Slurm (rather than the local job runner) to run jobs within the Docker container, then alternatively specify `-e "NONUSE=slurmctld,slurmd"`.
+These files from the cluster must be copied to the `/export` mount point (i.e., `/cluster_storage/galaxy_data/galaxy_export/` on the host if using below command) accessible to Galaxy before starting the container. This must be done regardless of which Slurm daemons are running within Docker. At start, symbolic links will be created to these files to `/etc` within the container, allowing the various Slurm functions to communicate properly with your cluster. In such cases, there's no reason to run `slurmctld`, the Slurm controller daemon, from within Docker, so specify `-e "NONUSE=slurmctld"`. Unless you would like to also use Slurm (rather than the local job runner) to run jobs within the Docker container, then alternatively specify `-e "NONUSE=slurmctld,slurmd"`.
 
 Importantly, Slurm relies on a shared filesystem between the Docker container and the execution nodes. To allow things to function correctly, checkout the basic filesystem setup above.
 
@@ -682,7 +719,7 @@ for most Galaxy instances.
 # Enable Galaxy to use BioContainers (Docker) <a name="auto-exec-tools-in-docker"/> [[toc]](#toc)
 This is a very cool feature where Galaxy automatically detects that your tool has an associated docker image, pulls it and runs it for you. These images (when available) have been generated using [mulled](https://github.com/mulled). To test, install the [IUC bedtools](https://toolshed.g2.bx.psu.edu/repository?repository_id=8d84903cc667dbe7&changeset_revision=7b3aaff0d78c) from the toolshed. When you try to execute *ClusterBed* for example. You may get a missing dependancy error for *bedtools*. But bedtools has an associated docker image on [quay.io](https://quay.io/).  Now configure Galaxy as follows:
 
-- Add this environment variable to `docker run`: `-e GALAXY_CONFIG_ENABLE_BETA_MULLED_CONTAINERS=True`
+- Add this environment variable to `docker run`: `-e GALAXY_CONFIG_ENABLE_MULLED_CONTAINERS=True`
 - In `job_conf.xml` configure a Docker enabled destination as follows:
 
 ```xml
@@ -702,9 +739,9 @@ When you execute the tool again, Galaxy will pull the image from Biocontainers (
 | `ENABLE_TTS_INSTALL`  | Enables the Test Tool Shed during container startup. This change is not persistent. (`ENABLE_TTS_INSTALL=True`)  |
 | `GALAXY_LOGGING` | Enables for verbose logging at Docker stdout. (`GALAXY_LOGGING=full`)  |
 | `BARE` | Disables all default Galaxy tools. (`BARE=True`)  |
-| `NONUSE` |  Disable services during container startup. (`NONUSE=nodejs,proftp,reports,slurmd,slurmctld`) |
-| `UWSGI_PROCESSES` | Set the number of uwsgi processes (`UWSGI_PROCESSES=2) |
-| `UWSGI_THREADS` | Set the number of uwsgi threads (`UWSGI_THREADS=4`) |
+| `NONUSE` |  Disable services during container startup. (`NONUSE=cron,proftp,reports,nodejs,condor,slurmd,slurmctld,celery,rabbitmq,redis,flower,tusd`) |
+| `GUNICORN_WORKERS` | Set the number of gunicorn workers (`GUNICORN_WORKERS=2`) |
+| `CELERY_WORKERS` | Set the number of celery workers (`CELERY_WORKERS=2`) |
 | `GALAXY_DOCKER_ENABLED` | Enable Galaxy to use Docker containers if annotated in tools (`GALAXY_DOCKER_ENABLED=False`) |
 | `GALAXY_DOCKER_VOLUMES` | Specify volumes that should be mounted into tool containers (`GALAXY_DOCKER_VOLUMES=""`) |
 | `GALAXY_HANDLER_NUMPROCS` | Set the number of Galaxy handler (`GALAXY_HANDLER_NUMPROCS=2`) |
@@ -720,14 +757,14 @@ Letsencrypt with the following environment variables:
 
 | Name   | Description   |
 |---|---|
-| `USE_HTTPS` | Set `USE_HTTPS=True` to set up HTTPS via self-signed certificates. If you have your own certificates, copy them to `/export/{server.key,server.crt}`. |
-| `USE_HTTPS_LETSENCRYPT` | Set `USE_HTTPS_LETSENCRYPT=True` to automatically set up HTTPS using Letsencrypt as a certificate authority. (Requires you to also set `GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL`) Note: only set one of `USE_HTTPS` and `USE_HTTPS_LETSENCRYPT` to true. |
-| `GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL` | Set `GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL=<your_domain>` so that Letsencrypt can test your that you own the domain you claim to own in order to issue you your HTTPS cert. |
+| `USE_HTTPS` | Set `USE_HTTPS=True` to set up HTTPS via self-signed certificates (CN is set to the value of `GALAXY_DOMAIN` variable, defaulting to `localhost` if no value is provided). If you have your own certificates, copy them to `/export/{server.key,server.crt}`. |
+| `USE_HTTPS_LETSENCRYPT` | Set `USE_HTTPS_LETSENCRYPT=True` to automatically set up HTTPS using Letsencrypt as a certificate authority. (Requires you to also set `GALAXY_DOMAIN`) Note: only set one of `USE_HTTPS` and `USE_HTTPS_LETSENCRYPT` to true. |
+| `GALAXY_DOMAIN` | Set `GALAXY_DOMAIN=<your_domain>` so that Letsencrypt can test your that you own the domain you claim to own in order to issue you your HTTPS cert. |
 
 
 # Lite Mode <a name="Lite-Mode" /> [[toc]](#toc)
 
-The lite mode will only start postgresql and a single Galaxy process, without nginx, uwsgi or any other special feature from the normal mode. In particular there is no support for the export folder or any Magic Environment variables.
+The lite mode will only start postgresql and a single Galaxy process, without nginx, gunicorn or any other special feature from the normal mode. In particular there is no support for the export folder or any Magic Environment variables.
 
 ```sh
 docker run -i -t -p 8080:8080 bgruening/galaxy-stable startup_lite
@@ -767,7 +804,7 @@ ENV GALAXY_CONFIG_BRAND deepTools
 ENV http_proxy 'http://yourproxyIP:8080'
 ENV https_proxy 'http://yourproxyIP:8080'
 
-WORKDIR /galaxy-central
+WORKDIR /galaxy
 
 RUN add-tool-shed --url 'http://testtoolshed.g2.bx.psu.edu/' --name 'Test Tool Shed'
 
@@ -775,18 +812,17 @@ RUN add-tool-shed --url 'http://testtoolshed.g2.bx.psu.edu/' --name 'Test Tool S
 RUN install-biojs msa
 
 # Adding the tool definitions to the container
-ADD my_tool_list.yml $GALAXY_ROOT/my_tool_list.yml
+ADD my_tool_list.yml $GALAXY_ROOT_DIR/my_tool_list.yml
 
 # Install deepTools
-RUN install-tools $GALAXY_ROOT/my_tool_list.yml
+RUN install-tools $GALAXY_ROOT_DIR/my_tool_list.yml
 
 # Mark folders as imported from the host.
 VOLUME ["/export/", "/data/", "/var/lib/docker"]
 
-# Expose port 80 (webserver), 21 (FTP server), 8800 (Proxy)
+# Expose port 80 (webserver), 21 (FTP server)
 EXPOSE :80
 EXPOSE :21
-EXPOSE :8800
 
 # Autostart script that is invoked during container start
 CMD ["/usr/bin/startup"]
@@ -798,7 +834,7 @@ The RNA-workbench has advanced examples about:
 - populating Galaxy data libraries
 
   ```bash
-    setup-data-libraries -i $GALAXY_ROOT/library_data.yaml -g http://localhost:8080
+    setup-data-libraries -i $GALAXY_ROOT_DIR/library_data.yaml -g http://localhost:8080
         -u $GALAXY_DEFAULT_ADMIN_USER -p $GALAXY_DEFAULT_ADMIN_PASSWORD
   ```
 
@@ -863,12 +899,12 @@ In rare situations where you cannot share your tools but still want to include t
 
 - Create a `tool_conf.xml` file for your tools.
 
-    This should look similar to the main [`tool_conf.xml`](https://github.com/galaxyproject/galaxy/blob/dev/config/tool_conf.xml.sample) file, but references your tools from the new directory. In other words a tool entry should look like this `<tool file="/local_tools/application_foo/foo.xml" />`.
+    This should look similar to the main [`tool_conf.xml`](https://github.com/galaxyproject/galaxy/blob/dev/lib/galaxy/config/sample/tool_conf.xml.sample) file, but references your tools from the new directory. In other words a tool entry should look like this `<tool file="/local_tools/application_foo/foo.xml" />`.
     Your `tool_conf.xml` should be available from inside of the container. We assume you have it stored under `/local_tools/my_tools.xml`.
 
 - Add the new tool config file to the Galaxy configuration.
 
-    To make Galaxy aware of your new tool configuration file you need to add the path to `tool_config_file`, which is by default `#tool_config_file = config/tool_conf.xml,config/shed_tool_conf.xml`. You can do this during container start by setting the environment variable `-e GALAXY_CONFIG_TOOL_CONFIG_FILE=config/tool_conf.xml.sample,config/shed_tool_conf.xml.sample,/local_tools/my_tools.xml`.
+    To make Galaxy aware of your new tool configuration file you need to add the path to `tool_config_file`, which is set to `/etc/galaxy/tool_conf.xml`. You can do this during container start by setting the environment variable `-e GALAXY_CONFIG_TOOL_CONFIG_FILE=/etc/galaxy/tool_conf.xml,/local_tools/my_tools.xml`.
 
 
 # Users & Passwords <a name="Users-Passwords" /> [[toc]](#toc)
@@ -880,23 +916,30 @@ If you want to create new users, please make sure to use the `/export/` volume. 
 The proftpd server is configured to use the main galaxy PostgreSQL user to access the database and select the username and password. If you want to run the
 docker container in production, please do not forget to change the user credentials in `/etc/proftpd/proftpd.conf` too.
 
-The Galaxy Report Webapp is `htpasswd` protected with username and password set to `admin`.
+The Galaxy Report and Flower Webapps are `htpasswd` protected with username and password set to `admin`.
+
+RabbitMQ is configured with:
+  - Admin username: `admin`
+  - Admin password: `admin`
+  - Galaxy vhost: `galaxy`
+  - Galaxy username: `galaxy`
+  - Galaxy password: `galaxy`
+  - Flower username: `flower`
+  - Flower password: `flower`
 
 
 # Development <a name="Development" /> [[toc]](#toc)
 
-This repository uses a git submodule to include [Ansible roles](https://github.com/galaxyproject/ansible-galaxy-extras) maintained by the Galaxy project.
-
-You can clone this repository and the Ansible submodule with:
+You can clone this repository with:
 
 ```sh
-git clone --recursive https://github.com/bgruening/docker-galaxy-stable.git
+git clone https://github.com/bgruening/docker-galaxy-stable.git
 ```
 
-Updating already existing submodules is possible with:
+This repository uses various [Ansible](http://www.ansible.com/) roles as specified in [requirements.yml](galaxy/ansible/requirements.yml) to manage configurations and dependencies. You can install these roles with the following command:
 
 ```sh
-git submodule update --init --recursive
+cd galaxy/ansible/ && ansible-galaxy install -r requirements.yml -p roles
 ```
 
 If you simply want to change the Galaxy repository and/or the Galaxy branch, from which the container is build you can do this with Docker `--build-arg` during the `docker build` step. For example you can use these parameters during container build:
@@ -904,6 +947,12 @@ If you simply want to change the Galaxy repository and/or the Galaxy branch, fro
 ```
  --build-arg GALAXY_RELEASE=install_workflow_and_tools
  --build-arg GALAXY_REPO=https://github.com/manabuishii/galaxy
+```
+
+To keep docker images lean and optimize storage, we recommend using [Dive](https://github.com/wagoodman/dive). It provides an interactive UI that lets you explore each layer of the image, helping you quickly identify files and directories that take up significant space. To install Dive, follow the installation instructions provided in the [Dive GitHub repository](https://github.com/wagoodman/dive?tab=readme-ov-file#installation). After building your docker image, use Dive to analyze it:
+
+```bash
+dive <your-docker-image-name>
 ```
 
 # Requirements <a name="Requirements" /> [[toc]](#toc)

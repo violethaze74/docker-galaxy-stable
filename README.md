@@ -57,7 +57,7 @@ It is deployed completely differently and gained many new features with many new
 - [Users & Passwords](#Users-Passwords)
 - [Development](#Development)
 - [Requirements](#Requirements)
-- [Changelog](#Changelog)
+- [Changelog](./Changelog.md)
 - [Support & Bug Reports](#Support-Bug-Reports)
 
 

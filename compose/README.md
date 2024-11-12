@@ -1,5 +1,14 @@
+
+⚠️ 
+
+The `compose` version of this project is currently not maintained. We update the files and versions as we have time, but it's not a priority at the moment.
+We will concentrate on the single-container version. If you want to deploy a composable version of Galaxy please have a look at https://github.com/galaxyproject/galaxy-helm or take over the maintainership of this version here :)
+
+⚠️
+
 # Galaxy Docker Compose
-This setup is built on the idea to use a basic docker-compose file and extend it
+
+This setup is built on the idea of using a basic docker-compose file and extending it
 for additional use cases. Therefore the `docker-compose.yml` is the base of the
 whole setup. By concatenating additional files, you can extend it to use, for
 example, HTCondor (see [Usage](#usage)).

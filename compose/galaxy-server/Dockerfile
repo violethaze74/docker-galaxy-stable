@@ -24,28 +24,28 @@ ENV GALAXY_USER=galaxy \
     GALAXY_HOME=/home/galaxy
 
 ENV GALAXY_CONDA_PREFIX=$GALAXY_CONFIG_TOOL_DEPENDENCY_DIR/_conda \
-    MINICONDA_VERSION=py310_24.5.0-0
+    MINIFORGE_VERSION=24.3.0-0
 
 RUN groupadd -r $GALAXY_USER -g $GALAXY_GID \
     && useradd -u $GALAXY_UID -r -g $GALAXY_USER -d $GALAXY_HOME -c "Galaxy user" --shell /bin/bash $GALAXY_USER \
     && mkdir $GALAXY_HOME \
     && chown -R $GALAXY_USER:$GALAXY_USER $GALAXY_HOME
 
-FROM build_base as build_miniconda
+FROM build_base as build_miniforge
 COPY ./files/common_cleanup.sh /usr/bin/common_cleanup.sh
-# Install Miniconda
-RUN curl -s -L "https://repo.anaconda.com/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-x86_64.sh" > ~/miniconda.sh \
-    && /bin/bash ~/miniconda.sh -b -p $GALAXY_CONDA_PREFIX \
-    && rm ~/miniconda.sh \
+
+# Install Miniforge
+RUN curl -s -L https://github.com/conda-forge/miniforge/releases/download/$MINIFORGE_VERSION/Miniforge3-$MINIFORGE_VERSION-Linux-x86_64.sh > ~/miniforge.sh \
+    && /bin/bash ~/miniforge.sh -b -p $GALAXY_CONDA_PREFIX/ \
+    && rm ~/miniforge.sh \
     && ln -s $GALAXY_CONDA_PREFIX/etc/profile.d/conda.sh /etc/profile.d/conda.sh \
     && echo ". $GALAXY_CONDA_PREFIX/etc/profile.d/conda.sh" >> $GALAXY_HOME/.bashrc \
     && echo "conda activate base" >> $GALAXY_HOME/.bashrc \
     && export PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH \
-    && conda config --add channels defaults \
     && conda config --add channels bioconda \
-    && conda config --add channels conda-forge \
     && conda install virtualenv pip ephemeris \
     && conda clean --packages -t -i \
+    && cp -r ~/.conda $GALAXY_HOME && cp ~/.condarc $GALAXY_HOME \
     && /usr/bin/common_cleanup.sh
 
 FROM build_base as build_galaxy
@@ -124,18 +124,9 @@ RUN usermod -aG docker $GALAXY_USER
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 10
 
 COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_galaxy ${GALAXY_ROOT_DIR} ${GALAXY_ROOT_DIR}
-COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniconda ${GALAXY_CONFIG_TOOL_DEPENDENCY_DIR} ${GALAXY_CONFIG_TOOL_DEPENDENCY_DIR}
-COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniconda ${GALAXY_HOME} ${GALAXY_HOME}
-COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniconda /etc/profile.d/conda.sh /etc/profile.d/conda.sh
-
-# The following commands will be executed as the galaxy user
-USER $GALAXY_USER
-
-# We need to set $HOME for some Tool Shed tools (e.g Perl libs with $HOME/.cpan)
-ENV HOME=$GALAXY_HOME
-
-# Switch back to User root
-USER root
+COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniforge ${GALAXY_CONFIG_TOOL_DEPENDENCY_DIR} ${GALAXY_CONFIG_TOOL_DEPENDENCY_DIR}
+COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniforge ${GALAXY_HOME} ${GALAXY_HOME}
+COPY --chown=$GALAXY_USER:$GALAXY_USER --from=build_miniforge /etc/profile.d/conda.sh /etc/profile.d/conda.sh
 
 COPY ./files/start.sh /usr/bin/start.sh
 

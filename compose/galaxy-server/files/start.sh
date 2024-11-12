@@ -131,4 +131,4 @@ chown -RL "$GALAXY_USER:$GALAXY_GROUP" "$GALAXY_CONFIG_DIR"
 
 echo "Starting Galaxy now.."
 cd "$GALAXY_ROOT_DIR" || { echo "Error: Could not change to $GALAXY_ROOT_DIR"; exit 1; }
-sudo -E -u $GALAXY_USER "$GALAXY_VIRTUAL_ENV/bin/galaxy" --config-file "$GALAXY_CONFIG_FILE"
+sudo -E -H -u $GALAXY_USER "$GALAXY_VIRTUAL_ENV/bin/galaxy" --config-file "$GALAXY_CONFIG_FILE"

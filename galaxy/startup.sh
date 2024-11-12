@@ -459,8 +459,11 @@ function start_gravity {
         export GALAXY_CONFIG_AMQP_INTERNAL_CONNECTION="pyamqp://galaxy:galaxy@localhost:5672/galaxy"
     fi
 
+    # Set the SUPERVISORD_SOCKET to overwrite gravity's default.
+    # The default will put the socket into the export dir, into gravity's state directory. And this caused some problems to start supervisord.  
+    export SUPERVISORD_SOCKET=${SUPERVISORD_SOCKET:-/tmp/galaxy_supervisord.sock}
     # Start galaxy services using gravity
-    /usr/local/bin/galaxyctl start
+    /usr/local/bin/galaxyctl -d start
 }
 
 if [[ ! -z $SUPERVISOR_POSTGRES_AUTOSTART ]]; then

@@ -5,23 +5,25 @@ ARG IMAGE_TAG=latest
 FROM $DOCKER_REGISTRY/$DOCKER_REGISTRY_USERNAME/galaxy-container-base:$IMAGE_TAG
 
 # Base dependencies
-RUN apt update && apt install --no-install-recommends gnupg2 -y \
+RUN apt update && apt install --no-install-recommends gnupg2 curl -y \
     && /usr/bin/common_cleanup.sh
 
 # Install HTCondor
 ENV DEBIAN_FRONTEND noninteractive
-RUN apt update && apt install --no-install-recommends htcondor -y \
-    && rm /etc/condor/condor_config.local \
+RUN curl -fsSL https://research.cs.wisc.edu/htcondor/repo/keys/HTCondor-current-Key | apt-key add - \
+    && echo "deb https://research.cs.wisc.edu/htcondor/repo/ubuntu/current jammy main" >> /etc/apt/sources.list \
+    && apt update && apt install --no-install-recommends htcondor -y \
+    && rm -f /etc/condor/condor_config.local \
     && /usr/bin/common_cleanup.sh
 
 # Install Slurm client
-ENV MUNGER_USER=munge \
+ENV MUNGE_USER=munge \
     MUNGE_UID=1200 \
     MUNGE_GID=1200
-RUN groupadd -r $MUNGER_USER -g $MUNGE_GID \
-    && useradd -u $MUNGE_UID -r -g $MUNGER_USER $MUNGER_USER \
-    && echo "deb http://ppa.launchpad.net/natefoo/slurm-drmaa/ubuntu focal main" >> /etc/apt/sources.list \
-    && echo "deb-src http://ppa.launchpad.net/natefoo/slurm-drmaa/ubuntu focal main" >> /etc/apt/sources.list \
+RUN groupadd -r $MUNGE_USER -g $MUNGE_GID \
+    && useradd -u $MUNGE_UID -r -g $MUNGE_USER $MUNGE_USER \
+    && echo "deb http://ppa.launchpad.net/natefoo/slurm-drmaa/ubuntu jammy main" >> /etc/apt/sources.list \
+    && echo "deb-src http://ppa.launchpad.net/natefoo/slurm-drmaa/ubuntu jammy main" >> /etc/apt/sources.list \
     && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8DE68488997C5C6BA19021136F2CC56412788738 \
     && apt update \
     && apt install --no-install-recommends python3-distutils slurm-client slurmd slurmctld slurm-drmaa1 -y \

@@ -1,6 +1,6 @@
-FROM alpine:3.11
+FROM alpine:3.17
 
-RUN apk add --no-cache bash python3 \
+RUN apk add --no-cache bash python3 py3-pip \
     && pip3 install j2cli[yaml] jinja2-ansible-filters
 
 COPY ./templates /templates

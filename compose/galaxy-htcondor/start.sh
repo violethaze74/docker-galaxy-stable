@@ -7,5 +7,6 @@ until [ ! -f /config/configurator.lock ] && echo Lock released; do
 done;
 
 cp -f "/config/$HTCONDOR_TYPE.conf" /etc/condor/condor_config.local
+condor_store_cred -p "$HTCONDOR_POOL_PASSWORD" -f /var/lib/condor/pool_password
 
 /usr/bin/supervisord

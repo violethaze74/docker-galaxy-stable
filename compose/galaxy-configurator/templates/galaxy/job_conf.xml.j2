@@ -26,6 +26,7 @@
         </plugin>
         {% endif -%}
     </plugins>
+    <handlers assign_with="db-skip-locked" />
     <destinations default="{{ GALAXY_DEPENDENCY_RESOLUTION | default('conda') }}_{{ GALAXY_JOB_RUNNER | default('local') }}">
         <destination id="local" runner="local">
             <env file="/galaxy/.venv/bin/activate" />
@@ -34,16 +35,19 @@
             {% if GALAXY_DEPENDENCY_RESOLUTION == 'singularity' -%}
               <env file="/galaxy/.venv/bin/activate" />
               <env id="HOME">/home/galaxy</env>
+              <env id="LC_ALL">C</env>
+              <env id="APPTAINER_CACHEDIR">/tmp/singularity</env>
+              <env id="APPTAINER_TMPDIR">/tmp</env>
               <param id="singularity_enabled">true</param>
               {% if GALAXY_JOB_RUNNER == 'local' -%}
-                <param id="singularity_volumes">{{ EXPORT_DIR | regex_replace("^.", "") }}/$galaxy_root:$galaxy_root:ro,{{ EXPORT_DIR | regex_replace("^.", "") }}/$tool_directory:$tool_directory:ro,{{ EXPORT_DIR | regex_replace("^.", "") }}/$job_directory:$job_directory:rw,{{ EXPORT_DIR | regex_replace("^.", "") }}/$working_directory:$working_directory:rw,{{ EXPORT_DIR | regex_replace("^.", "") }}/$default_file_path:$default_file_path:rw</param>
+                <param id="singularity_volumes">{{ EXPORT_DIR | regex_replace("^.", "") }}/$galaxy_root:$galaxy_root:ro,{{ EXPORT_DIR | regex_replace("^.", "") }}/$galaxy_root/database/tmp:$galaxy_root/database/tmp:rw,{{ EXPORT_DIR | regex_replace("^.", "") }}/$tool_directory:$tool_directory:ro,{{ EXPORT_DIR | regex_replace("^.", "") }}/$job_directory:$job_directory:rw,{{ EXPORT_DIR | regex_replace("^.", "") }}/$working_directory:$working_directory:rw,{{ EXPORT_DIR | regex_replace("^.", "") }}/$default_file_path:$default_file_path:rw</param>
               {% endif -%}
             {% elif GALAXY_DEPENDENCY_RESOLUTION == 'docker' -%}
               <param id="docker_enabled">true</param>
               <param id="docker_sudo">false</param>
               <param id="docker_set_user"></param>
               {% if GALAXY_JOB_RUNNER == 'local' -%}
-                <param id="docker_volumes">{{ HOST_EXPORT_DIR }}/$galaxy_root:$galaxy_root:ro,{{ HOST_EXPORT_DIR }}/$tool_directory:$tool_directory:ro,{{ HOST_EXPORT_DIR }}/$job_directory:$job_directory:rw,{{ HOST_EXPORT_DIR }}/$working_directory:$working_directory:rw,{{ HOST_EXPORT_DIR }}/$default_file_path:$default_file_path:rw</param>
+                <param id="docker_volumes">{{ HOST_EXPORT_DIR }}/$galaxy_root:$galaxy_root:ro,{{ HOST_EXPORT_DIR }}/$galaxy_root/database/tmp:$galaxy_root/database/tmp:rw,{{ HOST_EXPORT_DIR }}/$tool_directory:$tool_directory:ro,{{ HOST_EXPORT_DIR }}/$job_directory:$job_directory:rw,{{ HOST_EXPORT_DIR }}/$working_directory:$working_directory:rw,{{ HOST_EXPORT_DIR }}/$default_file_path:$default_file_path:rw</param>
               {% endif -%}
             {% elif not GALAXY_JOB_RUNNER.startswith('pulsar') and GALAXY_JOB_RUNNER != 'k8s' -%}
               <env file="/galaxy/.venv/bin/activate" />
@@ -59,8 +63,8 @@
             {% if GALAXY_JOB_RUNNER == 'k8s' -%}
               <param id="docker_repo_default">{{ GALAXY_K8S_DOCKER_REPO_DEFAULT | default('docker.io') }}</param>
               {% if GALAXY_K8S_DOCKER_OWNER_DEFAULT -%}<param id="docker_owner_default">{{ GALAXY_K8S_DOCKER_OWNER_DEFAULT }}</param>{% endif -%}
-              <param id="docker_image_default">{{ GALAXY_K8S_DOCKER_IMAGE_DEFAULT | default('ubuntu') }}</param>
-              <param id="docker_tag_default">{{ GALAXY_K8S_DOCKER_TAG_DEFAULT | default('20.04') }}</param>
+              <param id="docker_image_default">{{ GALAXY_K8S_DOCKER_IMAGE_DEFAULT | default('python') }}</param>
+              <param id="docker_tag_default">{{ GALAXY_K8S_DOCKER_TAG_DEFAULT | default('3.10.15') }}</param>
               <param id="docker_enabled">true</param>
             {% endif -%}
         </destination>

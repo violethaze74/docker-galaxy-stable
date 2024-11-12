@@ -3,7 +3,7 @@
 # Set default config dirs
 export GALAXY_CONF_DIR=${GALAXY_CONF_DIR:-/galaxy/config} \
        NGINX_CONF_DIR=${NGINX_CONF_DIR:-/etc/nginx/} \
-       SLURM_CONF_DIR=${SLURM_CONF_DIR:-/etc/slurm-llnl} \
+       SLURM_CONF_DIR=${SLURM_CONF_DIR:-/etc/slurm} \
        HTCONDOR_CONF_DIR=${HTCONDOR_CONF_DIR:-/htcondor} \
        PULSAR_CONF_DIR=${PULSAR_CONF_DIR:-/pulsar/config} \
        KIND_CONF_DIR=${KIND_CONF_DIR:-/kind}
@@ -70,7 +70,7 @@ fi
 if [ "$PULSAR_OVERWRITE_CONFIG" != "true" ]; then
   echo "PULSAR_OVERWRITE_CONFIG is not true. Skipping configuration of Pulsar"
 else
-  pulsar_configs=( "server.ini" "app.yml" "dependency_resolvers_conf.xml" )
+  pulsar_configs=( "server.ini" "app.yml" )
 
   for conf in "${pulsar_configs[@]}"; do
     echo "Configuring $conf"
@@ -138,7 +138,7 @@ if [ ! -f /base_config.yml ]; then
   touch /base_config.yml
 fi
 
-galaxy_configs=( "job_conf.xml" "galaxy.yml" "job_metrics.xml" "container_resolvers_conf.xml" "GALAXY_PROXY_PREFIX.txt" )
+galaxy_configs=( "job_conf.xml" "galaxy.yml" "job_metrics.xml" "container_resolvers_conf.yml" "dependency_resolvers_conf.xml" "GALAXY_PROXY_PREFIX.txt" )
 
 for conf in "${galaxy_configs[@]}"; do
   echo "Configuring $conf"

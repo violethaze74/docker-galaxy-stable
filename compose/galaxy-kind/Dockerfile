@@ -1,15 +1,15 @@
-FROM alpine:3.11
+FROM alpine:3.17
 
-ARG KIND_RELEASE=v0.8.1
-ARG KUBECTL_RELEASE=v1.18.3
+ARG KIND_RELEASE=v0.24.0
+ARG KUBECTL_RELEASE=v1.31.1
 
 RUN apk add --no-cache docker
 
 RUN apk add --no-cache --virtual build-deps wget \
     && apk add --no-cache bash \
-    && wget -O /usr/bin/kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_RELEASE}/kind-linux-amd64 \
+    && wget -O /usr/bin/kind https://kind.sigs.k8s.io/dl/${KIND_RELEASE}/kind-linux-amd64 \
     && chmod +x /usr/bin/kind \
-    && wget -O /usr/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/${KUBECTL_RELEASE}/bin/linux/amd64/kubectl \
+    && wget -O /usr/bin/kubectl https://dl.k8s.io/release/${KUBECTL_RELEASE}/bin/linux/amd64/kubectl \
     && chmod +x /usr/bin/kubectl \
     && apk del build-deps
 

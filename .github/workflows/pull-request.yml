@@ -3,76 +3,49 @@ on: pull_request
 jobs:
   test:
     if: false  # Temporarily disable workflow 
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         infrastructure:
           - name: galaxy-base
             files: -f docker-compose.yml
-            exclude_test:
-              - workflow_example1
           - name: galaxy-proxy-prefix
             files: -f docker-compose.yml
-            env: GALAXY_PROXY_PREFIX=/arbitrary_Galaxy-prefix GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL=http://localhost/arbitrary_Galaxy-prefix
+            env: GALAXY_PROXY_PREFIX=/arbitrary_Galaxy-prefix GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL=http://localhost/arbitrary_Galaxy-prefix EXTRA_SKIP_TESTS_BIOBLEND="not test_import_export_workflow_dict and not test_import_export_workflow_from_local_path"
             exclude_test:
-              - workflow_example1
+              - selenium
           - name: galaxy-htcondor
             files: -f docker-compose.yml -f docker-compose.htcondor.yml
-            exclude_test:
-              - workflow_example1
           - name: galaxy-slurm
             files: -f docker-compose.yml -f docker-compose.slurm.yml
             env: SLURM_NODE_COUNT=3
             options: --scale slurm_node=3
-            exclude_test:
-              - workflow_example1
           - name: galaxy-pulsar
             files: -f docker-compose.yml -f docker-compose.pulsar.yml
+            env: EXTRA_SKIP_TESTS_BIOBLEND="not test_wait_for_job"
             exclude_test:
-              - workflow_example1
-              - workflow_mapping_by_sequencing
-              - workflow_ard
-          # - name: galaxy-pulsar-mq
-          #   files: -f docker-compose.yml -f docker-compose.pulsar.yml -f docker-compose.pulsar.mq.yml
-          #   exclude_test:
-          #     - workflow_example1
-          #     - workflow_mapping_by_sequencing
+              - workflow_quality_control
+          - name: galaxy-pulsar-mq
+            files: -f docker-compose.yml -f docker-compose.pulsar.yml -f docker-compose.pulsar.mq.yml
+            env: EXTRA_SKIP_TESTS_BIOBLEND="not test_wait_for_job"
+            exclude_test:
+              - workflow_quality_control
           - name: galaxy-k8s
             files: -f docker-compose.yml -f docker-compose.k8s.yml
-            exclude_test:
-              - bioblend
-              - workflow_ard
-              - workflow_mapping_by_sequencing
-              - workflow_example1
-              - selenium
           - name: galaxy-singularity
             files: -f docker-compose.yml -f docker-compose.singularity.yml
+            env: EXTRA_SKIP_TESTS_BIOBLEND="not test_get_container_resolvers and not test_show_container_resolver"
+          - name: galaxy-pulsar-mq-singularity
+            files: -f docker-compose.yml -f docker-compose.pulsar.yml -f docker-compose.pulsar.mq.yml -f docker-compose.singularity.yml
+            env: EXTRA_SKIP_TESTS_BIOBLEND="not test_wait_for_job and not test_get_container_resolvers and not test_show_container_resolver"
             exclude_test:
-              - bioblend
-              - workflow_ard
-              - workflow_mapping_by_sequencing
-              - selenium
-          # - name: galaxy-pulsar-mq-singularity
-          #   files: -f docker-compose.yml -f docker-compose.pulsar.yml -f docker-compose.pulsar.mq.yml -f docker-compose.singularity.yml
-          #   exclude_test:
-          #     - bioblend
-          #     - workflow_ard
-          #     - workflow_mapping_by_sequencing
-          #     - selenium
+              - workflow_quality_control
           - name: galaxy-slurm-singularity
             files: -f docker-compose.yml -f docker-compose.slurm.yml -f docker-compose.singularity.yml
-            exclude_test:
-              - bioblend
-              - workflow_ard
-              - workflow_mapping_by_sequencing
-              - selenium
+            env: EXTRA_SKIP_TESTS_BIOBLEND="not test_get_container_resolvers and not test_show_container_resolver"
           - name: galaxy-htcondor-singularity
             files: -f docker-compose.yml -f docker-compose.htcondor.yml -f docker-compose.singularity.yml
-            exclude_test:
-              - bioblend
-              - workflow_ard
-              - workflow_mapping_by_sequencing
-              - selenium
+            env: EXTRA_SKIP_TESTS_BIOBLEND="not test_get_container_resolvers and not test_show_container_resolver"
         test:
           - name: bioblend
             files: -f tests/docker-compose.test.yml -f tests/docker-compose.test.bioblend.yml
@@ -85,10 +58,10 @@ jobs:
             workflow: sklearn/ard/ard.ga
             timeout: 60
             second_run: "true"
-          - name: workflow_mapping_by_sequencing
+          - name: workflow_quality_control
             files: -f tests/docker-compose.test.yml -f tests/docker-compose.test.workflows.yml
             exit-from: galaxy-workflow-test
-            workflow: training/variant-analysis/mapping-by-sequencing/mapping_by_sequencing.ga
+            workflow: training/sequence-analysis/quality-control/quality_control.ga
             timeout: 60
           - name: workflow_example1
             files: -f tests/docker-compose.test.yml -f tests/docker-compose.test.workflows.yml
@@ -106,9 +79,9 @@ jobs:
       - name: Check if test should be run
         id: run_check
         if: contains(matrix.infrastructure.exclude_test, matrix.test.name) != true
-        run: echo ::set-output name=run::true
+        run: echo "run=true" >> $GITHUB_OUTPUT
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Set WORKFLOWS env for worfklows-test
         if: matrix.test.workflow
         run: echo "WORKFLOWS=${{ matrix.test.workflow }}" >> $GITHUB_ENV
@@ -130,6 +103,9 @@ jobs:
             --build-arg IMAGE_TAG=ci-testing \
             $image_name
         working-directory: ./compose/base-images
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update -qq && sudo apt-get install docker-compose -y
       - name: Run tests for the first time
         if: steps.run_check.outputs.run
         run: |
@@ -161,11 +137,15 @@ jobs:
         shell: bash
         working-directory: ./compose
         continue-on-error: false
+      - name: Fix file names before saving artifacts
+        if: failure()
+        run: |
+          sudo find ./compose/export/galaxy/database -depth -name '*:*' -execdir bash -c 'mv "$1" "${1//:/-}"' bash {} \;
       - name: Allow upload-artifact read access
         if: failure()
         run: sudo chmod -R +r ./compose/export/galaxy/database
       - name: Save artifacts for debugging a failed test
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: ${{ matrix.infrastructure.name }}_${{ matrix.test.name }}_first-run
@@ -177,7 +157,7 @@ jobs:
           sudo rm -rf export/galaxy/database
         working-directory: ./compose
       - name: Run tests a second time
-        if: matrix.test.second_run == 'true' && steps.run_check.run
+        if: matrix.test.second_run == 'true' && steps.run_check.outputs.run
         run: |
           export IMAGE_TAG=ci-testing
           export COMPOSE_DOCKER_CLI_BUILD=1
@@ -203,11 +183,15 @@ jobs:
         shell: bash
         working-directory: ./compose
         continue-on-error: false
+      - name: Fix file names before saving artifacts
+        if: failure() && matrix.test.second_run == 'true'
+        run: |
+          sudo find ./compose/export/galaxy/database -depth -name '*:*' -execdir bash -c 'mv "$1" "${1//:/-}"' bash {} \;
       - name: Allow upload-artifact read access
-        if: failure()
+        if: failure() && matrix.test.second_run == 'true'
         run: sudo chmod -R +r ./compose/export/galaxy/database
       - name: Save artifacts for debugging a failed test
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v4
         if: failure() && matrix.test.second_run == 'true'
         with:
           name: ${{ matrix.infrastructure.name }}_${{ matrix.test.name }}_second-run

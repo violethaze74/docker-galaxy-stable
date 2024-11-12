@@ -17,7 +17,7 @@ def add_user(sa_session, security_agent, email, password, key=None, username="ad
     if query.count() > 0:
         return query.first()
     else:
-        User.use_pbkdf2 = False
+        User.use_pbkdf2 = True
         user = User(email)
         user.username = username
         user.set_password_cleartext(password)
@@ -34,6 +34,7 @@ def add_user(sa_session, security_agent, email, password, key=None, username="ad
             api_key.key = key
             sa_session.add(api_key)
             sa_session.flush()
+        sa_session.commit()
         return user
 
 

@@ -2,7 +2,6 @@
 # This will set up Kubernetes using kind (https://kind.sigs.k8s.io).
 # Note that this extension is not compatible with others like Pulsar, HTCondor, Singularity, etc.
 # Example: `docker-compose -f docker-compose.yml -f docker-compose.k8s.yml up`
-version: "3.7"
 services:
   galaxy-configurator:
     environment:

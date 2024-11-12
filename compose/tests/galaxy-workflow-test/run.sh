@@ -14,7 +14,7 @@ do
     --galaxy_admin_key "${GALAXY_USER_KEY:-fakekey}" \
     --shed_install \
     --engine external_galaxy \
-    --test_output ${GALAXY_ROOT:-/galaxy}/database/tool_test_output.html \
-    --test_output_json ${GALAXY_ROOT:-/galaxy}/database/tool_test_output.json \
+    --test_output ${GALAXY_ROOT_DIR:-/galaxy}/database/tool_test_output.html \
+    --test_output_json ${GALAXY_ROOT_DIR:-/galaxy}/database/tool_test_output.json \
     "$workflow";
 done

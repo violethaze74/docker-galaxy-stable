@@ -4,13 +4,14 @@
 
 sleep 10 # ToDo: Use locking or so to be sure we really have the newest version
 echo "Waiting for Slurm config"
-until [ -f /etc/slurm-llnl/slurm.conf ] && echo Config found; do
+until [ -f /etc/slurm/slurm.conf ] && echo Config found; do
   sleep 0.5;
 done;
 
 if [ "$1" = "slurmctld" ]; then
   if [ ! -f /etc/munge/munge.key ]; then
-    gosu "$MUNGE_USER" /usr/sbin/create-munge-key
+    chown -R "$MUNGE_USER":"$MUNGE_USER" /etc/munge
+    gosu "$MUNGE_USER" /usr/sbin/mungekey
   fi
   echo "Starting Munge.."
   /etc/init.d/munge start

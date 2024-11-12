@@ -28,14 +28,14 @@ else
 
     echo "starting Galaxy"
     # Unset SUDO_* vars otherwise conda run chown based on that
-    sudo -E -u galaxy -- bash -c "unset SUDO_UID; \
+    sudo -E -H -u galaxy -- bash -c "unset SUDO_UID; \
         unset SUDO_GID; \
         unset SUDO_COMMAND; \
         unset SUDO_USER; \
         ./run.sh -d $install_log --pidfile galaxy_install.pid --http-timeout 3000"
 
     galaxy_install_pid=`cat galaxy_install.pid`
-    galaxy-wait -g http://localhost:$PORT -v --timeout 120
+    galaxy-wait -g http://localhost:$PORT -v --timeout 600
 fi
 
 # Create the admin user if not already done
@@ -44,7 +44,7 @@ fi
 if [[ ! -z $GALAXY_DEFAULT_ADMIN_USER ]]
     then
         (
-        cd $GALAXY_ROOT
+        cd $GALAXY_ROOT_DIR
         . $GALAXY_VIRTUAL_ENV/bin/activate
         echo "Creating admin user $GALAXY_DEFAULT_ADMIN_USER with key $GALAXY_DEFAULT_ADMIN_KEY and password $GALAXY_DEFAULT_ADMIN_PASSWORD if not existing"
         python /usr/local/bin/create_galaxy_user.py --user "$GALAXY_DEFAULT_ADMIN_EMAIL" --password "$GALAXY_DEFAULT_ADMIN_PASSWORD" \
@@ -67,7 +67,7 @@ fi
 if ! pgrep "supervisord" > /dev/null
 then
     # stop everything
-    sudo -E -u galaxy ./run.sh --stop --pidfile galaxy_install.pid
+    sudo -E -H -u galaxy ./run.sh --stop --pidfile galaxy_install.pid
     rm $install_log
     service postgresql stop
 fi

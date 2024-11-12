@@ -1,19 +1,8 @@
 #!/usr/bin/env bash
 
-# Migration path for old images that had the tool_deps under /export/galaxy-central/tool_deps/
-
-if [ -d "/export/galaxy-central/tool_deps/" ] && [ ! -L "/export/galaxy-central/tool_deps/" ]; then
-    mkdir -p /export/tool_deps/
-    mv /export/galaxy-central/tool_deps /export/
-    ln -s /export/tool_deps/ $GALAXY_ROOT/
-fi
-
 # This is needed for Docker compose to have a unified alias for the main container.
 # Modifying /etc/hosts can only happen during runtime not during build-time
 echo "127.0.0.1      galaxy" >> /etc/hosts
-
-# Set number of Galaxy handlers via GALAXY_HANDLER_NUMPROCS or default to 2
-ansible localhost -m ini_file -a "dest=/etc/supervisor/conf.d/galaxy.conf section=program:handler option=numprocs value=${GALAXY_HANDLER_NUMPROCS:-2}" &> /dev/null
 
 # If the Galaxy config file is not in the expected place, copy from the sample
 # and hope for the best (that the admin has done all the setup through env vars.)
@@ -23,60 +12,119 @@ if [ ! -f $GALAXY_CONFIG_FILE ]
   cp /export/config/galaxy${GALAXY_CONFIG_FILE: -4}.sample $GALAXY_CONFIG_FILE
 fi
 
+# Set number of Gunicorn workers via GUNICORN_WORKERS or default to 2
+python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.gunicorn.workers" "${GUNICORN_WORKERS:-2}" &> /dev/null
+
+# Set number of Celery workers via CELERY_WORKERS or default to 2
+python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.celery.concurrency" "${CELERY_WORKERS:-2}" &> /dev/null
+
+# Set number of Galaxy handlers via GALAXY_HANDLER_NUMPROCS or default to 2
+python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.handlers.handler.processes" "${GALAXY_HANDLER_NUMPROCS:-2}" &> /dev/null
+
+# Initialize variables for optional ansible parameters
+ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX=""
+
 # Configure proxy prefix filtering
 if [[ ! -z $PROXY_PREFIX ]]
-    then
-    if [ ${GALAXY_CONFIG_FILE: -4} == ".ini" ]
-        then
-        ansible localhost -m ini_file -a "dest=${GALAXY_CONFIG_FILE} section=filter:proxy-prefix option=prefix value=${PROXY_PREFIX}" &> /dev/null
-        ansible localhost -m ini_file -a "dest=${GALAXY_CONFIG_FILE} section=app:main option=filter-with value=proxy-prefix" &> /dev/null
-    else
-        ansible localhost -m lineinfile -a "path=${GALAXY_CONFIG_FILE} regexp='^  module:' state=absent" &> /dev/null
-        ansible localhost -m lineinfile -a "path=${GALAXY_CONFIG_FILE} regexp='^  socket:' state=absent" &> /dev/null
-        ansible localhost -m lineinfile -a "path=${GALAXY_CONFIG_FILE} regexp='^  mount:' state=absent" &> /dev/null
-        ansible localhost -m lineinfile -a "path=${GALAXY_CONFIG_FILE} regexp='^  manage-script-name:' state=absent" &> /dev/null
-        ansible localhost -m lineinfile -a "path=${GALAXY_CONFIG_FILE} insertafter='^uwsgi:' line='  manage-script-name: true'" &> /dev/null
-        ansible localhost -m lineinfile -a "path=${GALAXY_CONFIG_FILE} insertafter='^uwsgi:' line='  mount: ${PROXY_PREFIX}=galaxy.webapps.galaxy.buildapp:uwsgi_app()'" &> /dev/null
-        ansible localhost -m lineinfile -a "path=${GALAXY_CONFIG_FILE} insertafter='^uwsgi:' line='  socket: unix:///srv/galaxy/var/uwsgi.sock'" &> /dev/null
+then
+    echo "Configuring with proxy prefix: $PROXY_PREFIX"
+    export GALAXY_CONFIG_GALAXY_URL_PREFIX="$PROXY_PREFIX"
 
-        # Also set SCRIPT_NAME. It's not always necessary due to manage-script-name: true in galaxy.yml, but it makes life easier in this container + it does no harm
-        ansible localhost -m lineinfile -a "path=/etc/nginx/conf.d/uwsgi.conf regexp='^    uwsgi_param SCRIPT_NAME' state=absent" &> /dev/null
-        ansible localhost -m lineinfile -a "path=/etc/nginx/conf.d/uwsgi.conf insertafter='^    include uwsgi_params' line='    uwsgi_param SCRIPT_NAME ${PROXY_PREFIX};'" &> /dev/null
-    fi
+    # TODO: Set this using GALAXY_CONFIG_INTERACTIVETOOLS_BASE_PATH after gravity config manager is updated to handle env vars properly
+    ansible localhost -m replace -a "path=${GALAXY_CONFIG_FILE} regexp='^  #interactivetools_base_path:.*' replace='  interactivetools_base_path: ${PROXY_PREFIX}'" &> /dev/null
+    
+    python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.reports.url_prefix" "$PROXY_PREFIX/reports" &> /dev/null
+    
+    python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.tusd.extra_args" "-behind-proxy -base-path $PROXY_PREFIX/api/upload/resumable_upload" &> /dev/null
 
-    ansible localhost -m ini_file -a "dest=${GALAXY_CONFIG_DIR}/reports_wsgi.ini section=filter:proxy-prefix option=prefix value=${PROXY_PREFIX}/reports" &> /dev/null
-    ansible localhost -m ini_file -a "dest=${GALAXY_CONFIG_DIR}/reports_wsgi.ini section=app:main option=filter-with value=proxy-prefix" &> /dev/null
+    ansible localhost -m replace -a "path=/etc/flower/flowerconfig.py regexp='^url_prefix.*' replace='url_prefix = \"$PROXY_PREFIX/flower\"'" &> /dev/null
 
     # Fix path to html assets
     ansible localhost -m replace -a "dest=$GALAXY_CONFIG_DIR/web/welcome.html regexp='(href=\"|\')[/\\w]*(/static)' replace='\\1${PROXY_PREFIX}\\2'" &> /dev/null
-
+    
     # Set some other vars based on that prefix
-    if [ "x$GALAXY_CONFIG_COOKIE_PATH" == "x" ]
-        then
-        export GALAXY_CONFIG_COOKIE_PATH="$PROXY_PREFIX"
-    fi
-    if [ "x$GALAXY_CONFIG_DYNAMIC_PROXY_PREFIX" == "x" ]
-        then
+    if [[ -z "$GALAXY_CONFIG_DYNAMIC_PROXY_PREFIX" ]]
+    then
         export GALAXY_CONFIG_DYNAMIC_PROXY_PREFIX="$PROXY_PREFIX/gie_proxy"
     fi
 
-    # Change the defaults nginx upload/x-accel paths
-    if [ "$GALAXY_CONFIG_NGINX_UPLOAD_PATH" == "/_upload" ]
-        then
-            export GALAXY_CONFIG_NGINX_UPLOAD_PATH="${PROXY_PREFIX}${GALAXY_CONFIG_NGINX_UPLOAD_PATH}"
+    if [[ ! -z $GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL ]]
+    then
+        export GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL="${GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL}${PROXY_PREFIX}"
+    fi
+
+    if [[ "$USE_HTTPS_LETSENCRYPT" != "False" || "$USE_HTTPS" != "False" ]]
+    then
+        ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX="--extra-vars nginx_prefix_location=$PROXY_PREFIX"
+    else
+        ansible-playbook -c local /ansible/nginx.yml \
+        --extra-vars nginx_prefix_location="$PROXY_PREFIX"
+    fi
+fi
+
+if [ "$USE_HTTPS_LETSENCRYPT" != "False" ]
+then
+    echo "Settting up letsencrypt"
+    PATH=$GALAXY_CONDA_PREFIX/bin/:$PATH ansible-playbook -c local /ansible/nginx.yml \
+    --extra-vars '{"nginx_servers": ["galaxy_redirect_ssl", "interactive_tools_redirect_ssl"]}' \
+    --extra-vars '{"nginx_ssl_servers": ["galaxy_https", "interactive_tools_https"]}' \
+    --extra-vars nginx_ssl_role=usegalaxy_eu.certbot \
+    --extra-vars "{\"certbot_domains\": [\"$GALAXY_DOMAIN\"]}" \
+    --extra-vars nginx_conf_ssl_certificate_key=/etc/ssl/user/privkey-$GALAXY_USER.pem \
+    --extra-vars nginx_conf_ssl_certificate=/etc/ssl/certs/fullchain.pem \
+    $ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX
+fi
+if [ "$USE_HTTPS" != "False" ]
+then
+    if [ -f /export/server.key -a -f /export/server.crt ]
+    then
+        echo "Copying SSL keys"
+        ssl_key_content=$(cat /export/server.key | sed 's/$/\\n/' | tr -d '\n')
+        ansible-playbook -c local /ansible/nginx.yml \
+        --extra-vars '{"nginx_servers": ["galaxy_redirect_ssl", "interactive_tools_redirect_ssl"]}' \
+        --extra-vars '{"nginx_ssl_servers": ["galaxy_https", "interactive_tools_https"]}' \
+        --extra-vars nginx_ssl_src_dir=/export \
+        --extra-vars "{\"sslkeys\": {\"server.key\": \"$ssl_key_content\"}}" \
+        --extra-vars nginx_conf_ssl_certificate_key=/etc/ssl/private/server.key \
+        --extra-vars nginx_conf_ssl_certificate=/etc/ssl/certs/server.crt \
+        $ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX
+    else
+        echo "Setting up self-signed SSL keys"
+        ansible-playbook -c local /ansible/nginx.yml \
+        --extra-vars '{"nginx_servers": ["galaxy_redirect_ssl", "interactive_tools_redirect_ssl"]}' \
+        --extra-vars '{"nginx_ssl_servers": ["galaxy_https", "interactive_tools_https"]}' \
+        --extra-vars nginx_ssl_role=galaxyproject.self_signed_certs \
+        --extra-vars nginx_conf_ssl_certificate_key=/etc/ssl/private/$GALAXY_DOMAIN.pem \
+        --extra-vars nginx_conf_ssl_certificate=/etc/ssl/certs/$GALAXY_DOMAIN.crt \
+        --extra-vars "{\"openssl_domains\": [\"$GALAXY_DOMAIN\"]}" \
+        $ANSIBLE_EXTRA_VARS_HTTPS_PROXY_PREFIX
+    fi
+fi
+
+if [[ "$USE_HTTPS_LETSENCRYPT" != "False" || "$USE_HTTPS" != "False" ]]
+then
+    # Check if GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL has http but not https
+    if [[ $GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL == "http:"* ]]
+    then
+        GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL=${GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL/http:/https:}
+        export GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL
     fi
 fi
 
 # Disable authentication of Galaxy reports
-if [[ ! -z $DISABLE_REPORTS_AUTH ]]
-    then
-        # disable authentification
-        echo "Disable Galaxy reports authentification "
-        echo "" > /etc/nginx/conf.d/reports_auth.conf
-    else
-        # enable authentification
-        echo "Enable Galaxy reports authentification "
-        cp /etc/nginx/conf.d/reports_auth.conf.source /etc/nginx/conf.d/reports_auth.conf
+if [[ ! -z $DISABLE_REPORTS_AUTH ]]; then
+    # disable authentification
+    echo "Disable Galaxy reports authentification "
+    cp /etc/nginx/reports_auth.conf /etc/nginx/reports_auth.conf.source 
+    echo "# No authentication defined" > /etc/nginx/reports_auth.conf
+fi
+
+# Disable authentication of flower
+if [[ ! -z $DISABLE_FLOWER_AUTH ]]; then
+    # disable authentification
+    echo "Disable flower authentification "
+    cp /etc/nginx/flower_auth.conf /etc/nginx/flower_auth.conf.source
+    echo "# No authentication defined" > /etc/nginx/flower_auth.conf
 fi
 
 # Try to guess if we are running under --privileged mode
@@ -98,7 +146,7 @@ else
     fi
 fi
 
-cd $GALAXY_ROOT
+cd $GALAXY_ROOT_DIR
 . $GALAXY_VIRTUAL_ENV/bin/activate
 
 if $PRIVILEGED; then
@@ -123,17 +171,25 @@ fi
 if [[ ! -z $LOAD_GALAXY_CONDITIONAL_DEPENDENCIES ]]
     then
         echo "Installing optional dependencies in galaxy virtual environment..."
-        : ${GALAXY_WHEELS_INDEX_URL:="https://wheels.galaxyproject.org/simple"}
-        GALAXY_CONDITIONAL_DEPENDENCIES=$(PYTHONPATH=lib python -c "import galaxy.dependencies; print('\n'.join(galaxy.dependencies.optional('$GALAXY_CONFIG_FILE')))")
-        [ -z "$GALAXY_CONDITIONAL_DEPENDENCIES" ] || echo "$GALAXY_CONDITIONAL_DEPENDENCIES" | pip install -q -r /dev/stdin --index-url "${GALAXY_WHEELS_INDEX_URL}"
+        sudo -E -H -u $GALAXY_USER bash -c '
+            . $GALAXY_VIRTUAL_ENV/bin/activate
+            : ${GALAXY_WHEELS_INDEX_URL:="https://wheels.galaxyproject.org/simple"}
+            : ${PYPI_INDEX_URL:="https://pypi.python.org/simple"}
+            GALAXY_CONDITIONAL_DEPENDENCIES=$(PYTHONPATH=lib python -c "import galaxy.dependencies; print(\"\\n\".join(galaxy.dependencies.optional(\"$GALAXY_CONFIG_FILE\")))")
+            [ -z "$GALAXY_CONDITIONAL_DEPENDENCIES" ] || echo "$GALAXY_CONDITIONAL_DEPENDENCIES" | pip install -q -r /dev/stdin --index-url "${GALAXY_WHEELS_INDEX_URL}" --extra-index-url "${PYPI_INDEX_URL}"
+        '
 fi
 
 if [[ ! -z $LOAD_GALAXY_CONDITIONAL_DEPENDENCIES ]] && [[ ! -z $LOAD_PYTHON_DEV_DEPENDENCIES ]]
     then
         echo "Installing development requirements in galaxy virtual environment..."
-        : ${GALAXY_WHEELS_INDEX_URL:="https://wheels.galaxyproject.org/simple"}
-        dev_requirements='./lib/galaxy/dependencies/dev-requirements.txt'
-        [ -f $dev_requirements ] && pip install -q -r $dev_requirements --index-url "${GALAXY_WHEELS_INDEX_URL}"
+        sudo -E -H -u $GALAXY_USER bash -c '
+            . $GALAXY_VIRTUAL_ENV/bin/activate
+            : ${GALAXY_WHEELS_INDEX_URL:="https://wheels.galaxyproject.org/simple"}
+            : ${PYPI_INDEX_URL:="https://pypi.python.org/simple"}
+            dev_requirements="./lib/galaxy/dependencies/dev-requirements.txt"
+            [ -f $dev_requirements ] && pip install -q -r $dev_requirements --index-url "${GALAXY_WHEELS_INDEX_URL}" --extra-index-url "${PYPI_INDEX_URL}"
+        '
 fi
 
 # Enable Test Tool Shed
@@ -147,7 +203,7 @@ fi
 if [[ ! -z $BARE ]]
     then
         echo "Remove all tools from the tool_conf.xml file."
-        export GALAXY_CONFIG_TOOL_CONFIG_FILE=config/shed_tool_conf.xml,$GALAXY_ROOT/test/functional/tools/upload_tool_conf.xml
+        export GALAXY_CONFIG_TOOL_CONFIG_FILE=$GALAXY_ROOT_DIR/test/functional/tools/upload_tool_conf.xml
 fi
 
 # If auto installing conda envs, make sure bcftools is installed for __set_metadata__ tool
@@ -159,8 +215,7 @@ if [[ ! -z $GALAXY_CONFIG_CONDA_AUTO_INSTALL ]]
         fi
 fi
 
-if [[ ! -z $GALAXY_EXTRAS_CONFIG_POSTGRES ]]; then
-    if [[ $NONUSE != *"postgres"* ]]
+if [[ $NONUSE != *"postgres"* ]]
     then
         # Backward compatibility for exported postgresql directories before version 15.08.
         # In previous versions postgres has the UID/GID of 102/106. We changed this in
@@ -173,12 +228,10 @@ if [[ ! -z $GALAXY_EXTRAS_CONFIG_POSTGRES ]]; then
                         chown -R postgres:postgres /export/postgresql/
                 fi
         fi
-    fi
 fi
 
 
-if [[ ! -z $GALAXY_EXTRAS_CONFIG_CONDOR ]]; then
-    if [[ ! -z $ENABLE_CONDOR ]]
+if [[ ! -z $ENABLE_CONDOR ]]
     then
         if [[ ! -z $CONDOR_HOST ]]
         then
@@ -203,15 +256,14 @@ TRUST_UID_DOMAIN = true" > /etc/condor/condor_config.local
             rm -f /etc/condor/condor_config
             ln -s /export/condor_config /etc/condor/condor_config
         fi
-    fi
 fi
 
 
 # Copy or link the slurm/munge config files
 if [ -e /export/slurm.conf ]
 then
-    rm -f /etc/slurm-llnl/slurm.conf
-    ln -s /export/slurm.conf /etc/slurm-llnl/slurm.conf
+    rm -f /etc/slurm/slurm.conf
+    ln -s /export/slurm.conf /etc/slurm/slurm.conf
 else
     # Configure SLURM with runtime hostname.
     # Use absolute path to python so virtualenv is not used.
@@ -234,11 +286,26 @@ fi
 # Waits until postgres is ready
 function wait_for_postgres {
     echo "Checking if database is up and running"
-    until /usr/local/bin/check_database.py 2>&1 >/dev/null; do sleep 1; echo "Waiting for database"; done
+    until /usr/local/bin/check_database.py 2>&1 >/dev/null; do sleep 5; echo "Waiting for database"; done
     echo "Database connected"
 }
 
-# $NONUSE can be set to include cron, proftp, reports or nodejs
+# Waits until rabbitmq is ready
+function wait_for_rabbitmq {
+    echo "Checking if RabbitMQ is up and running"
+    until rabbitmqctl status 2>&1 >/dev/null; do sleep 5; echo "Waiting for RabbitMQ"; done
+    echo "RabbitMQ is ready"
+}
+
+# Waits until docker daemon is ready
+function wait_for_docker {
+    echo "Checking if docker daemon is up and running"
+    until docker version 2>&1 >/dev/null; do sleep 5; echo "Waiting for docker daemon"; done
+    echo "Docker daemon is ready"
+}
+
+# $NONUSE can be set to include postgres, cron, proftp, reports, nodejs, condor, slurmd, slurmctld,
+# celery, rabbitmq, redis, flower or tusd
 # if included we will _not_ start these services.
 function start_supervisor {
     supervisord -c /etc/supervisor/supervisord.conf
@@ -250,15 +317,6 @@ function start_supervisor {
             echo "Starting postgres"
             supervisorctl start postgresql
         fi
-    fi
-
-    wait_for_postgres
-
-    # Make sure the database is automatically updated
-    if [[ ! -z $GALAXY_AUTO_UPDATE_DB ]]
-    then
-        echo "Updating Galaxy database"
-        sh manage_db.sh -c /etc/galaxy/galaxy.yml upgrade
     fi
 
     if [[ ! -z $SUPERVISOR_MANAGE_CRON ]]; then
@@ -274,22 +332,6 @@ function start_supervisor {
         then
             echo "Starting ProFTP"
             supervisorctl start proftpd
-        fi
-    fi
-
-    if [[ ! -z $SUPERVISOR_MANAGE_REPORTS ]]; then
-        if [[ $NONUSE != *"reports"* ]]
-        then
-            echo "Starting Galaxy reports webapp"
-            supervisorctl start reports
-        fi
-    fi
-
-    if [[ ! -z $SUPERVISOR_MANAGE_IE_PROXY ]]; then
-        if [[ $NONUSE != *"nodejs"* ]]
-        then
-            echo "Starting nodejs"
-            supervisorctl start galaxy:galaxy_nodejs_proxy
         fi
     fi
 
@@ -328,6 +370,100 @@ function start_supervisor {
         # We need to run munged regardless
         mkdir -p /var/run/munge && /usr/sbin/munged -f
     fi
+
+    if [[ ! -z $SUPERVISOR_MANAGE_RABBITMQ ]]; then
+        if [[ $NONUSE != *"rabbitmq"* ]]
+        then
+            echo "Starting rabbitmq"
+            supervisorctl start rabbitmq
+
+            wait_for_rabbitmq
+            echo "Configuring rabbitmq users"
+            ansible-playbook -c local /usr/local/bin/configure_rabbitmq_users.yml &> /dev/null
+
+            echo "Restarting rabbitmq"
+            supervisorctl restart rabbitmq
+        fi    
+    fi
+
+    if [[ ! -z $SUPERVISOR_MANAGE_REDIS ]]; then
+        if [[ $NONUSE != *"redis"* ]]
+        then
+            echo "Starting redis"
+            supervisorctl start redis
+        fi
+    fi
+
+    if [[ ! -z $SUPERVISOR_MANAGE_FLOWER ]]; then 
+        if [[ $NONUSE != *"flower"* && $NONUSE != *"celery"* && $NONUSE != *"rabbitmq"* ]]
+        then
+            echo "Starting flower"
+            supervisorctl start flower
+        fi
+    fi
+}
+
+function start_gravity {
+    if [[ ! -z $GRAVITY_MANAGE_CELERY ]]; then
+        if [[ $NONUSE == *"celery"* ]]
+        then
+            echo "Disabling Galaxy celery app"
+            python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.celery.enable" "false" &> /dev/null
+            python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.celery.enable_beat" "false" &> /dev/null
+        else
+            export GALAXY_CONFIG_ENABLE_CELERY_TASKS='true'
+            if [[ $NONUSE != *"redis"* ]]
+            then
+                # Configure Galaxy to use Redis as the result backend for Celery tasks
+                ansible localhost -m replace -a "path=${GALAXY_CONFIG_FILE} regexp='^  #celery_conf:' replace='  celery_conf:'" &> /dev/null
+                ansible localhost -m replace -a "path=${GALAXY_CONFIG_FILE} regexp='^  #  result_backend:.*' replace='    result_backend: redis://127.0.0.1:6379/0'" &> /dev/null 
+            fi
+        fi
+    fi
+
+    if [[ ! -z $GRAVITY_MANAGE_GX_IT_PROXY ]]; then
+        if [[ $NONUSE == *"nodejs"* ]]
+        then
+            echo "Disabling nodejs"
+            python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.gx_it_proxy.enable" "false" &> /dev/null
+        else
+            # TODO: Remove this after gravity config manager is updated to handle env vars properly
+            ansible localhost -m replace -a "path=${GALAXY_CONFIG_FILE} regexp='^  #interactivetools_enable:.*' replace='  interactivetools_enable: true'" &> /dev/null
+        fi
+    fi
+
+    if [[ ! -z $GRAVITY_MANAGE_TUSD ]]; then
+        if [[ $NONUSE == *"tusd"* ]]
+        then
+            echo "Disabling Galaxy tusd app"
+            python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.tusd.enable" "false" &> /dev/null
+            cp /etc/nginx/delegated_uploads.conf /etc/nginx/delegated_uploads.conf.source 
+            echo "# No delegated uploads" > /etc/nginx/delegated_uploads.conf
+        else
+            # TODO: Remove this after gravity config manager is updated to handle env vars properly
+            ansible localhost -m replace -a "path=${GALAXY_CONFIG_FILE} regexp='^  #galaxy_infrastructure_url:.*' replace='  galaxy_infrastructure_url: ${GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL}'" &> /dev/null
+        fi
+    fi
+
+    if [[ ! -z $GRAVITY_MANAGE_REPORTS ]]; then
+        if [[ $NONUSE == *"reports"* ]]
+        then
+            echo "Disabling Galaxy reports webapp"
+            python3 /usr/local/bin/update_yaml_value "${GRAVITY_CONFIG_FILE}" "gravity.reports.enable" "false" &> /dev/null
+        fi
+    fi
+
+    if [[ $NONUSE != *"rabbitmq"* ]]
+    then
+        # Set AMQP internal connection for Galaxy
+        export GALAXY_CONFIG_AMQP_INTERNAL_CONNECTION="pyamqp://galaxy:galaxy@localhost:5672/galaxy"
+    fi
+
+    # Set the SUPERVISORD_SOCKET to overwrite gravity's default.
+    # The default will put the socket into the export dir, into gravity's state directory. And this caused some problems to start supervisord.  
+    export SUPERVISORD_SOCKET=${SUPERVISORD_SOCKET:-/tmp/galaxy_supervisord.sock}
+    # Start galaxy services using gravity
+    /usr/local/bin/galaxyctl -d start
 }
 
 if [[ ! -z $SUPERVISOR_POSTGRES_AUTOSTART ]]; then
@@ -339,77 +475,59 @@ if [[ ! -z $SUPERVISOR_POSTGRES_AUTOSTART ]]; then
 fi
 
 if $PRIVILEGED; then
-    echo "Enable Galaxy Interactive Environments."
-    export GALAXY_CONFIG_INTERACTIVE_ENVIRONMENT_PLUGINS_DIRECTORY="config/plugins/interactive_environments"
-    if [ x$DOCKER_PARENT == "x" ]; then
+    # in privileged mode autofs and CVMFS is available
+    export GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH="$GALAXY_CONFIG_TOOL_DATA_TABLE_CONFIG_PATH,/cvmfs/data.galaxyproject.org/byhand/location/tool_data_table_conf.xml,/cvmfs/data.galaxyproject.org/managed/location/tool_data_table_conf.xml"
+
+    echo "Enable Galaxy Interactive Tools."
+    export GALAXY_CONFIG_INTERACTIVETOOLS_ENABLE=True
+    export GALAXY_CONFIG_TOOL_CONFIG_FILE="$GALAXY_CONFIG_TOOL_CONFIG_FILE,$GALAXY_INTERACTIVE_TOOLS_CONFIG_FILE"
+
+    # Update domain-based interactive tools nginx configuration with the galaxy domain if provided
+    if [[ ! -z $GALAXY_DOMAIN ]]; then
+        sed -i "s/\(\.interactivetool\.\)[^;]*/\1$GALAXY_DOMAIN/g" /etc/nginx/interactive_tools_common.conf
+    fi
+
+    if [[ -z $DOCKER_PARENT ]]; then
         #build the docker in docker environment
         bash /root/cgroupfs_mount.sh
         start_supervisor
+        start_gravity
         supervisorctl start docker
+        wait_for_docker
     else
         #inheriting /var/run/docker.sock from parent, assume that you need to
         #run docker with sudo to validate
         echo "$GALAXY_USER ALL = NOPASSWD : ALL" >> /etc/sudoers
         start_supervisor
+        start_gravity
     fi
-    if  [[ ! -z $PULL_IE_IMAGES ]]; then
-        echo "About to pull IE images. Depending on the size, this may take a while!"
+    if  [[ ! -z $PULL_IT_IMAGES ]]; then
+        echo "About to pull IT images. Depending on the size, this may take a while!"
 
-        for ie in {JUPYTER,RSTUDIO,ETHERCALC,PHINCH,NEO}; do
-            enabled_var_name="GALAXY_EXTRAS_IE_FETCH_${ie}";
+        for it in {JUPYTER,RSTUDIO,ETHERCALC,PHINCH,NEO}; do
+            enabled_var_name="GALAXY_IT_FETCH_${it}";
             if [[ ${!enabled_var_name} ]]; then
                 # Store name in a var
-                image_var_name="GALAXY_EXTRAS_${ie}_IMAGE"
+                image_var_name="GALAXY_IT_${it}_IMAGE"
                 # And then read from that var
                 docker pull "${!image_var_name}"
             fi
         done
     fi
-
-    # in privileged mode autofs and CVMFS is available
-    # install autofs
-    echo "Installing autofs to enable automatic CVMFS mounts"
-    apt-get install autofs --no-install-recommends -y
-    apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 else
-    echo "Disable Galaxy Interactive Environments. Start with --privileged to enable IE's."
-    export GALAXY_CONFIG_INTERACTIVE_ENVIRONMENT_PLUGINS_DIRECTORY=""
+    echo "Disable Galaxy Interactive Tools. Start with --privileged to enable ITs."
+    export GALAXY_CONFIG_INTERACTIVETOOLS_ENABLE=False
     start_supervisor
+    start_gravity
 fi
 
-if [ "$USE_HTTPS_LETSENCRYPT" != "False" ]
+wait_for_postgres
+
+# Make sure the database is automatically updated
+if [[ ! -z $GALAXY_AUTO_UPDATE_DB ]]
 then
-    echo "Settting up letsencrypt"
-    ansible-playbook -c local /ansible/provision.yml \
-    --extra-vars gather_facts=False \
-    --extra-vars galaxy_extras_config_ssl=True \
-    --extra-vars galaxy_extras_config_ssl_method=letsencrypt \
-    --extra-vars galaxy_extras_galaxy_domain="GALAXY_CONFIG_GALAXY_INFRASTRUCTURE_URL" \
-    --extra-vars galaxy_extras_config_nginx_upload=False \
-    --tags https
-fi
-if [ "$USE_HTTPS" != "False" ]
-then
-    if [ -f /export/server.key -a -f /export/server.crt ]
-    then
-        echo "Copying SSL keys"
-        ansible-playbook -c local /ansible/provision.yml \
-        --extra-vars gather_facts=False \
-        --extra-vars galaxy_extras_config_ssl=True \
-        --extra-vars galaxy_extras_config_ssl_method=own \
-        --extra-vars src_nginx_ssl_certificate_key=/export/server.key \
-        --extra-vars src_nginx_ssl_certificate=/export/server.crt \
-        --extra-vars galaxy_extras_config_nginx_upload=False \
-        --tags https
-    else
-        echo "Setting up self-signed SSL keys"
-        ansible-playbook -c local /ansible/provision.yml \
-        --extra-vars gather_facts=False \
-        --extra-vars galaxy_extras_config_ssl=True \
-        --extra-vars galaxy_extras_config_ssl_method=self-signed \
-        --extra-vars galaxy_extras_config_nginx_upload=False \
-        --tags https
-    fi
+    echo "Updating Galaxy database"
+    sh manage_db.sh -c $GALAXY_CONFIG_FILE upgrade
 fi
 
 # In case the user wants the default admin to be created, do so.
@@ -425,7 +543,7 @@ if [[ ! -z $GALAXY_DEFAULT_ADMIN_USER ]]
         if [ -x /export/post-start-actions.sh ]
             then
            # uses ephemeris, present in docker-galaxy-stable, to wait for the local instance
-           /tool_deps/_conda/bin/galaxy-wait -g http://127.0.0.1 -v --timeout 120 > $GALAXY_LOGS_DIR/post-start-actions.log &&
+           /tool_deps/_conda/bin/galaxy-wait -g http://127.0.0.1 -v --timeout 600 > $GALAXY_LOGS_DIR/post-start-actions.log &&
            /export/post-start-actions.sh >> $GALAXY_LOGS_DIR/post-start-actions.log &
     fi
 fi
@@ -433,7 +551,7 @@ fi
 # Reinstall tools if the user want to
 if [[ ! -z $GALAXY_AUTO_UPDATE_TOOLS ]]
     then
-        /tool_deps/_conda/bin/galaxy-wait -g http://127.0.0.1 -v --timeout 120 > /home/galaxy/logs/post-start-actions.log &&
+        /tool_deps/_conda/bin/galaxy-wait -g http://127.0.0.1 -v --timeout 600 > /home/galaxy/logs/post-start-actions.log &&
         OLDIFS=$IFS
         IFS=','
         for TOOL_YML in `echo "$GALAXY_AUTO_UPDATE_TOOLS"`
@@ -445,9 +563,9 @@ if [[ ! -z $GALAXY_AUTO_UPDATE_TOOLS ]]
         IFS=$OLDIFS
 fi
 
-# migrate custom IEs or Visualisations (Galaxy plugins)
+# migrate custom Visualisations (Galaxy plugins)
 # this is needed for by the new client build system
-python3 ${GALAXY_ROOT}/scripts/plugin_staging.py
+python3 ${GALAXY_ROOT_DIR}/scripts/plugin_staging.py
 
 # Enable verbose output
 if [ `echo ${GALAXY_LOGGING:-'no'} | tr [:upper:] [:lower:]` = "full" ]
